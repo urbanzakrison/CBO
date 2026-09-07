@@ -207,7 +207,7 @@ button{cursor:pointer}
 <div class="importbox">
   <h3>📷 IMPORTERA FRÅN GAMEBOOK</h3>
   <p class="sub">Ladda en eller flera GameBook-bilder för samma omgång. CBO slår ihop unika spelare till en gemensam granskningslista.</p>
-  <p class="sub" style="margin-top:6px"><strong>Gäster:</strong> endast registrerade CBO-spelare får CBO-poäng. Gäster förbrukar inte placeringar – poängen 4–3–2–1 flyttas automatiskt upp till de registrerade spelarna. Minst fyra registrerade CBO-spelare krävs för en officiell omgång.</p>
+  <p class="sub" style="margin-top:6px"><strong>Gäster:</strong> endast registrerade CBO-spelare får CBO-poäng. Varje registrerad deltagare får 1 närvaropoäng; de tre bästa registrerade spelarna får dessutom 3, 2 respektive 1 bonuspoäng. Gäster får alltid 0 poäng och förbrukar inga CBO-placeringar.</p>
 
   <label class="primary" style="display:block;text-align:center;cursor:pointer">
     VÄLJ GAMEBOOK-BILD
@@ -588,10 +588,12 @@ function applyGameBookReview(){
     return;
   }
 
-  // Tävlingsregel: bara registrerade CBO-spelare räknas i poäng och sammanställningar.
+  // CBO-regel: alla registrerade deltagare får 1 närvaropoäng.
+  // De tre bästa registrerade spelarna får bonus +3 / +2 / +1.
+  // Gäster får alltid 0 poäng och förbrukar inga CBO-placeringar.
+  const registered=allRows.filter(r=>cboIsRegisteredPlayer(r.name));
   const guests=allRows.filter(r=>!cboIsRegisteredPlayer(r.name));
-  const rows=allRows.filter(r=>cboIsRegisteredPlayer(r.name));
-  if(!rows.length){
+  if(!registered.length){
     alert('Ingen registrerad CBO-spelare finns i underlaget. Gäster kan inte få CBO-poäng.');
     return;
   }
@@ -602,16 +604,19 @@ function applyGameBookReview(){
   const date=ai.date?.value||'';
   const course=ai.course?.value||'Hamra';
   const report=ai.report?.value||'';
-  const sorted=rows.slice().sort((a,b)=>a.net-b.net || a.shcp-b.shcp || a.name.localeCompare(b.name,'sv'));
-  const official=sorted.length>=4;
-  const results=sorted.map((r,i)=>({
+
+  const registeredSorted=registered.slice().sort((a,b)=>a.net-b.net || a.shcp-b.shcp || a.name.localeCompare(b.name,'sv'));
+  const results=registeredSorted.map((r,i)=>({
     ...r,
     place:i+1,
-    points:official?(i===0?4:i===1?3:i===2?2:1):0
+    points:1 + (i===0?3:i===1?2:i===2?1:0)
   }));
 
-  // Endast registrerade spelare skickas vidare till publicering och leaderboard.
-  draftPreview={round,date,course,report,results,official,par9:36};
+  const resultByName=new Map(results.map(r=>[cboNormalizePlayerName(r.name),r]));
+  const displayRows=allRows.slice().sort((a,b)=>a.net-b.net || a.shcp-b.shcp || a.name.localeCompare(b.name,'sv'));
+
+  // Kanslisten administrerar bara officiella omgångar. Gäster påverkar inte officiell status.
+  draftPreview={round,date,course,report,results,official:true,par9:36};
 
   let card=document.getElementById('previewCard');
   if(!card){
@@ -626,26 +631,22 @@ function applyGameBookReview(){
   card.innerHTML=`
     <div class="cardhead">
       <h2>GRANSKA OMGÅNG ${round}</h2>
-      <span class="badge">${official?'OFFICIELL':'EJ OFFICIELL'}</span>
+      <span class="badge">OFFICIELL</span>
     </div>
     <div class="sub" style="margin-bottom:12px">${date||'Datum saknas'} · ${course||'Bana saknas'} · par 36</div>
-    ${results.map(r=>`
-      <div class="row">
-        <span class="rank">${r.place}</span>
+    ${displayRows.map((r,i)=>{
+      const rr=resultByName.get(cboNormalizePlayerName(r.name));
+      const status=rr ? `CBO ${rr.place}:a · ${rr.points} p` : 'GÄST · 0 p';
+      return `<div class="row">
+        <span class="rank">${i+1}</span>
         <span class="name">${r.name}
-          <div class="sub">SHCP ${r.shcp} · Brutto ${r.gross}</div>
+          <div class="sub">SHCP ${r.shcp} · Brutto ${r.gross}${rr?` · ${status}`:` · <strong>${status}</strong>`}</div>
         </span>
-        <span class="value">${r.net} netto · ${r.points} p</span>
-      </div>`).join('')}
-    ${guests.length?`
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,0,0,.12)">
-        <div class="sub"><strong>Gäster – räknas inte i CBO</strong></div>
-        ${guests.map(g=>`<div class="row"><span class="rank">G</span><span class="name">${g.name}<div class="sub">SHCP ${g.shcp} · Brutto ${g.gross}</div></span><span class="value">${g.net} netto · 0 p</span></div>`).join('')}
-      </div>`:''}
+        <span class="value">${r.net} netto · ${rr?rr.points:0} p</span>
+      </div>`;
+    }).join('')}
     <div class="sub" style="margin-top:12px">
-      ${official
-        ? `Poängen är beräknade 4–3–2–1 bland ${results.length} registrerade CBO-spelare.${guests.length?' Gäster har exkluderats och förbrukar inga poängplaceringar.':''} Ingen data är sparad ännu.`
-        : `Endast ${results.length} registrerade CBO-spelare: omgången blir ej officiell och ger inga CBO-poäng.${guests.length?' Gäster räknas inte mot fyraspelargränsen.':''}`}
+      Alla registrerade CBO-deltagare får 1 närvaropoäng. Bonus +3/+2/+1 går till de tre bästa registrerade spelarna. Gäster får 0 p och förbrukar inga CBO-placeringar. Ingen data är sparad ännu.
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
       <button class="secondary" type="button" onclick="cancelDraftPreview()">Tillbaka och ändra</button>
