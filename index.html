@@ -207,6 +207,7 @@ button{cursor:pointer}
 <div class="importbox">
   <h3>📷 IMPORTERA FRÅN GAMEBOOK</h3>
   <p class="sub">Ladda en eller flera GameBook-bilder för samma omgång. CBO slår ihop unika spelare till en gemensam granskningslista.</p>
+  <p class="sub" style="margin-top:6px"><strong>Gäster:</strong> endast registrerade CBO-spelare får CBO-poäng. Gäster förbrukar inte placeringar – poängen 4–3–2–1 flyttas automatiskt upp till de registrerade spelarna. Minst fyra registrerade CBO-spelare krävs för en officiell omgång.</p>
 
   <label class="primary" style="display:block;text-align:center;cursor:pointer">
     VÄLJ GAMEBOOK-BILD
@@ -437,6 +438,10 @@ async function saveDraft(){
      return;
    }
 
+   // Defense in depth: aldrig skriv en oregistrerad gäst till CBO-resultat.
+   draftPreview.results=(draftPreview.results||[]).filter(x=>cboIsRegisteredPlayer(x.name));
+   if(draftPreview.results.length<4) draftPreview.official=false;
+
    const payload=draftPreview.results.map(x=>({
      name:x.name,
      shcp:Number(x.shcp),
@@ -566,10 +571,28 @@ function getGBReview(){
     gross:Number(document.getElementById(`gbGross${i}`)?.value)
   }));
 }
+function cboNormalizePlayerName(name){
+  return String(name||'').trim().toLocaleLowerCase('sv-SE').replace(/\s+/g,' ');
+}
+function cboRegisteredPlayerNames(){
+  return new Set((DATA.seasons?.['2026']?.players||[]).map(p=>cboNormalizePlayerName(p.name)));
+}
+function cboIsRegisteredPlayer(name){
+  return cboRegisteredPlayerNames().has(cboNormalizePlayerName(name));
+}
+
 function applyGameBookReview(){
-  const rows=getGBReview();
-  if(rows.some(r=>!r.name||!Number.isFinite(r.shcp)||!Number.isFinite(r.net)||!Number.isFinite(r.gross))){
+  const allRows=getGBReview();
+  if(allRows.some(r=>!r.name||!Number.isFinite(r.shcp)||!Number.isFinite(r.net)||!Number.isFinite(r.gross))){
     alert('Kontrollera alla fyra kolumner innan du går vidare.');
+    return;
+  }
+
+  // Tävlingsregel: bara registrerade CBO-spelare räknas i poäng och sammanställningar.
+  const guests=allRows.filter(r=>!cboIsRegisteredPlayer(r.name));
+  const rows=allRows.filter(r=>cboIsRegisteredPlayer(r.name));
+  if(!rows.length){
+    alert('Ingen registrerad CBO-spelare finns i underlaget. Gäster kan inte få CBO-poäng.');
     return;
   }
 
@@ -587,6 +610,7 @@ function applyGameBookReview(){
     points:official?(i===0?4:i===1?3:i===2?2:1):0
   }));
 
+  // Endast registrerade spelare skickas vidare till publicering och leaderboard.
   draftPreview={round,date,course,report,results,official,par9:36};
 
   let card=document.getElementById('previewCard');
@@ -613,10 +637,15 @@ function applyGameBookReview(){
         </span>
         <span class="value">${r.net} netto · ${r.points} p</span>
       </div>`).join('')}
+    ${guests.length?`
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,0,0,.12)">
+        <div class="sub"><strong>Gäster – räknas inte i CBO</strong></div>
+        ${guests.map(g=>`<div class="row"><span class="rank">G</span><span class="name">${g.name}<div class="sub">SHCP ${g.shcp} · Brutto ${g.gross}</div></span><span class="value">${g.net} netto · 0 p</span></div>`).join('')}
+      </div>`:''}
     <div class="sub" style="margin-top:12px">
       ${official
-        ? 'Poängen är beräknade 4–3–2–1. Ingen data är sparad ännu.'
-        : 'Färre än fyra deltagare: omgången blir ej officiell och ger inga CBO-poäng.'}
+        ? `Poängen är beräknade 4–3–2–1 bland ${results.length} registrerade CBO-spelare.${guests.length?' Gäster har exkluderats och förbrukar inga poängplaceringar.':''} Ingen data är sparad ännu.`
+        : `Endast ${results.length} registrerade CBO-spelare: omgången blir ej officiell och ger inga CBO-poäng.${guests.length?' Gäster räknas inte mot fyraspelargränsen.':''}`}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
       <button class="secondary" type="button" onclick="cancelDraftPreview()">Tillbaka och ändra</button>
