@@ -157,7 +157,7 @@ button{cursor:pointer}
    <div class="card" id="latestCard"></div>
    <div class="card kansli" id="kansliCard"></div>
    <div class="card"><div class="cardhead"><h2 id="homeTotalTitle">Totalen 2026</h2><span class="badge" onclick="showPage('leaderboard')">Visa alla</span></div><div id="homeTop"></div></div>
-   <div class="card" id="currentUserCard"><h2 id="currentUserName">Inloggad spelare</h2><div class="sub" id="currentUserRole">Inloggad</div><div class="metric" id="urbanMetrics"></div></div>
+   <div class="card" id="currentUserCard"><h2 id="currentUserName">Inloggad spelare</h2><div class="sub" id="currentUserRole">Inloggad</div><div class="metric" id="currentPlayerMetrics"></div></div>
   </section>
 
   <section id="leaderboard" class="page content">
@@ -198,7 +198,7 @@ button{cursor:pointer}
   <section id="admin" class="page content">
    <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
-    <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
+    <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN · 4.1.9</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
     <label>Datum <span aria-hidden="true">*</span></label><input id="newDate" type="date" required aria-required="true" onchange="cboOnRoundDateChanged()" oninput="cboOnRoundDateChanged()">
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
@@ -209,14 +209,16 @@ button{cursor:pointer}
     <div class="sub" style="margin-top:6px">* Datum och bana är obligatoriska. Dagens datum är bara ett förslag: du måste aktivt bekräfta rätt speldatum innan du kan gå vidare. Endast en officiell CBO-omgång kan publiceras per kalenderdag.</div>
     
 
-<div class="importbox">
+<div id="dateGateNotice" class="notice" style="margin-top:14px"><strong>1. Bekräfta speldatumet ovan.</strong><br>GameBook-importen låses upp först när datumet är bekräftat.</div>
+
+<div class="importbox" id="gamebookImportBox" aria-disabled="true" style="opacity:.45">
   <h3>📷 IMPORTERA FRÅN GAMEBOOK</h3>
   <p class="sub">Ladda en eller flera GameBook-bilder för samma omgång. CBO slår ihop unika spelare till en gemensam granskningslista.</p>
   <p class="sub" style="margin-top:6px"><strong>Gäster:</strong> endast registrerade CBO-spelare får CBO-poäng. Varje registrerad deltagare får 1 närvaropoäng; de tre bästa registrerade spelarna får dessutom 3, 2 respektive 1 bonuspoäng. Gäster får alltid 0 poäng och förbrukar inga CBO-placeringar.</p>
 
-  <label class="primary" style="display:block;text-align:center;cursor:pointer">
+  <label id="gbFileLabel" class="primary" style="display:block;text-align:center;cursor:not-allowed;pointer-events:none">
     VÄLJ GAMEBOOK-BILD
-    <input id="gbFile" type="file" accept="image/*" multiple style="display:none" onchange="handleGameBookImages(this)">
+    <input id="gbFile" disabled type="file" accept="image/*" multiple style="display:none" onchange="handleGameBookImages(this)">
   </label>
 
   <div id="gbImageActions" class="hidden" style="display:flex;gap:8px;margin-top:8px">
@@ -370,13 +372,16 @@ function renderHome(){
  const rr=rounds(),latest=rr[0],ranked=rankRound(latest.results);
  document.getElementById('latestCard').innerHTML=`<div class="cardhead"><h2>Senaste omgången</h2><span class="badge">${latest.results.length>=4?'OFFICIELL':'EJ OFFICIELL'}</span></div><strong>Omgång ${latest.round}</strong><div class="sub">${latest.date} · ${latest.course||'Bana ej angiven'} · ${latest.results.length} deltagare · Resultat mot HCP/par 36</div>`+
  ranked.map((r,i)=>{let hr=hcpResult(r.net);return `<div class="row"><span class="rank ${medal(i)}">${i+1}</span><span class="name">${r.name}<div class="sub">${r.gross!=null?`Brutto ${r.gross} · `:''}${r.points} p</div></span><span class="hcp-result ${hr.cls}">${hr.txt}</span><span class="value">${r.net}</span></div>`}).join('');
- let reports=roundReports(),rep=reports[latest.round]||'Fyra tappra CBO:are tog sig an dagens nio hål. Urban gick hem med segern på 34 netto, medan Johan och Magnus B fick avgöras på spelhandikapp efter delade 38. Närvaro är som bekant viktigast – men dagens vinnare lär ändå tycka att det andra också är ganska kul.';
- document.getElementById('kansliCard').innerHTML=`<div class="kicker">Hälsningar från kanslisten</div><h2 style="margin:5px 0">Omgång ${latest.round}</h2><p>${rep}</p><div class="reactions"><button class="react" onclick="toggleReact(this)">👏 6</button><button class="react" onclick="toggleReact(this)">😂 4</button><button class="react" onclick="toggleReact(this)">⛳ 3</button></div><button class="secondary" onclick="alert('I skarp version öppnas WhatsApp med kanslistens hälsning och länk till rundan.')">Dela i WhatsApp</button>`;
+ let reports=roundReports(),rep=latest.recap||reports[latest.round]||'';
+ document.getElementById('kansliCard').innerHTML=`<div class="kicker">Hälsningar från kanslisten</div><h2 style="margin:5px 0">Omgång ${latest.round}</h2>${rep?`<p>${rep}</p>`:`<p class="sub">Ingen hälsning publicerad för omgången.</p>`}<button class="secondary" onclick="shareRoundWhatsApp(${latest.round})">Dela i WhatsApp</button>`;
  let totals=leaderboard('total');
  document.getElementById('homeTop').innerHTML=totals.length
    ? totals.slice(0,3).map((s,i)=>`<div class="row"><span class="rank ${medal(i)}">${i+1}</span><span class="name">${s.name}</span><span class="value">${fmt(s.value)}</span></div>`).join('')
    : `<div class="unavailable">${window.CBO_LIVE_ERROR ? 'Live-data kunde inte hämtas.' : 'Väntar på live-data…'}</div>`;
- let u=(window.CBO_LIVE_STATS||dynamicStats()).find(x=>x.name==='Urban Zakrison');if(u)document.getElementById('urbanMetrics').innerHTML=`<div><span class="sub">Totalen</span><strong>${u.points}</strong></div><div><span class="sub">Närvaro</span><strong>${u.attendance}</strong></div><div><span class="sub">Netto</span><strong>${fmt(u.net)}</strong></div><div><span class="sub">Effektivitet</span><strong>${fmt(u.eff)}</strong></div>`;
+ let currentName=window.CBO_CURRENT_PLAYER?.name||'';
+ let u=(window.CBO_LIVE_STATS||dynamicStats()).find(x=>x.name===currentName);
+ let metrics=document.getElementById('currentPlayerMetrics');
+ if(metrics){metrics.innerHTML=u?`<div><span class="sub">Totalen</span><strong>${u.points}</strong></div><div><span class="sub">Närvaro</span><strong>${u.attendance}</strong></div><div><span class="sub">Netto</span><strong>${fmt(u.net)}</strong></div><div><span class="sub">Effektivitet</span><strong>${fmt(u.eff)}</strong></div>`:`<div class="sub" style="grid-column:1/-1">${currentName?'Live-statistik hämtas…':'Logga in för att se din statistik.'}</div>`;}
  selectedSeason=selectedBefore; 
 }
 function renderRounds(){
@@ -385,12 +390,12 @@ function renderRounds(){
 }
 function openRound(no){
  const r=rounds().find(x=>x.round===no),rank=rankRound(r.results),historical=selectedSeason!=='2026';
- let rep=!historical?roundReports()[no]:null;
+ let rep=!historical?(r.recap||roundReports()[no]||null):null;
  document.getElementById('roundDetail').classList.remove('hidden');
  document.getElementById('roundDetail').innerHTML=`<div class="cardhead"><h2>Omgång ${no}</h2><span class="badge">${r.official===false?'EJ OFFICIELL':'OFFICIELL'}</span></div><div class="sub">${r.date} · ${r.course||'–'} · par ${r.par9||36}</div><div class="scoregrid header"><span>#</span><span>Namn</span><span>SHCP</span><span>Netto</span><span>Brutto</span><span>Pts</span></div>`+
  rank.map((x,i)=>`<div class="scoregrid item"><b>${i+1}</b><span>${x.name}</span><span>${x.shcp??'–'}</span><b>${x.net}</b><span>${x.gross??'–'}</span><b>${x.points??'–'}</b></div>`).join('')+
  (historical?`<div class="historical-note">Historisk omgång. Spelhandikapp finns inte i det migrerade Excel-underlaget och bruttoslag saknas före 2026.</div>`:'')+
- (rep?`<div class="kansli" style="padding:12px;margin-top:12px;border-radius:12px"><div class="kicker">Hälsningar från kanslisten</div><p>${rep}</p></div>`:'');
+ (rep?`<div class="kansli" style="padding:12px;margin-top:12px;border-radius:12px"><div class="kicker">Hälsningar från kanslisten</div><p>${rep}</p><button class="secondary" onclick="shareRoundWhatsApp(${no})">Dela i WhatsApp</button></div>`:`<button class="secondary" style="margin-top:12px" onclick="shareRoundWhatsApp(${no})">Dela i WhatsApp</button>`);
  document.getElementById('roundDetail').scrollIntoView({behavior:'smooth'});
 }
 function renderPlayers(){
@@ -466,13 +471,15 @@ async function saveDraft(){
    if(error)throw new Error(error.message||'Kunde inte publicera omgången.');
    if(!data||data.ok!==true)throw new Error(data?.error||'Servern avvisade omgången.');
 
+   const publishedRoundNo=Number(data.round_no||draftPreview.round);
    draftPreview=null;
    document.getElementById('previewCard').classList.add('hidden');
    if(typeof window.CBO_LOAD_LIVE_LEADERBOARD==='function') await window.CBO_LOAD_LIVE_LEADERBOARD();
    renderAll();
    setupAdmin();
    showPage('rounds');
-   alert(`Omgång ${data.round_no} är publicerad i Supabase.`);
+   openRound(publishedRoundNo);
+   alert(`Omgång ${publishedRoundNo} är publicerad. Resultat, leaderboard och kanslistens hälsning är uppdaterade.`);
  }catch(e){
    alert('Publicering misslyckades: '+(e?.message||String(e)));
  }finally{
@@ -484,6 +491,25 @@ function toggleManual(){document.getElementById('manualWrap').classList.toggle('
 function loadGameBookImage(e){
  const f=e.target.files&&e.target.files[0];if(!f)return;const img=document.getElementById('gamebookPreview'),st=document.getElementById('gamebookStatus');
  img.src=URL.createObjectURL(f);img.classList.remove('hidden');st.classList.remove('hidden');st.innerHTML='<strong>GameBook-bild redo för granskning.</strong><br>Bilden ligger kvar som referens. Öppna granskningsfältet nedan och kontrollera spelare, SHCP, netto och brutto före publicering. Automatisk bildtolkning kopplas på när appen får serversida.';document.getElementById('manualWrap').classList.remove('collapsed');
+}
+function plainTextFromHtml(value){
+ const el=document.createElement('div');
+ el.innerHTML=String(value||'').replace(/<br\s*\/?>(?=.)/gi,'\n');
+ return (el.textContent||el.innerText||'').replace(/\n{3,}/g,'\n\n').trim();
+}
+function shareRoundWhatsApp(no){
+ const before=selectedSeason; selectedSeason='2026';
+ const r=rounds().find(x=>Number(x.round)===Number(no));
+ if(!r){selectedSeason=before;alert('Omgången kunde inte hittas.');return;}
+ const ranked=rankRound(r.results||[]);
+ const recap=plainTextFromHtml(r.recap||roundReports()[r.round]||'');
+ const resultLines=ranked.map((x,i)=>`${i+1}. ${x.name} – ${x.net} netto – ${x.points??0} p`).join('\n');
+ const totals=leaderboard('total').slice(0,3).map((x,i)=>`${i+1}. ${x.name} – ${fmt(x.value)} p`).join('\n');
+ const appLink=(location.protocol==='http:'||location.protocol==='https:')?`\n\n${location.href.split('#')[0]}`:'';
+ const recapBlock=recap?`\n\nHälsningar från kanslisten\n${recap}`:'';
+ const text=`CBO 2026 – Omgång ${r.round}\n${r.date} · ${r.course||'–'} · par ${r.par9||36}${recapBlock}\n\nResultat\n${resultLines}\n\nTotalen\n${totals}${appLink}`;
+ selectedSeason=before;
+ window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener,noreferrer');
 }
 function toggleReact(b){b.classList.toggle('active')}
 
@@ -739,12 +765,35 @@ function cboConfirmRoundDate(){
 
 function cboUpdateAdminGate(){
   const x=cboAdminInputs();
-  const btn=document.getElementById('previewRoundBtn');
-  if(!btn) return;
   const fieldsOk=Boolean(x.round?.value && x.date?.value && String(x.course?.value||'').trim());
-  const ok=fieldsOk && cboIsRoundDateConfirmed();
-  btn.disabled=!ok;
-  btn.title=ok?'':(!fieldsOk?'Fyll i omgång, datum och bana för att gå vidare.':'Bekräfta speldatumet för att gå vidare.');
+  const dateConfirmed=cboIsRoundDateConfirmed();
+  const ok=fieldsOk && dateConfirmed;
+
+  const btn=document.getElementById('previewRoundBtn');
+  if(btn){
+    btn.disabled=!ok;
+    btn.title=ok?'':(!fieldsOk?'Fyll i omgång, datum och bana för att gå vidare.':'Bekräfta speldatumet för att gå vidare.');
+  }
+
+  // GameBook is deliberately unavailable until the admin has actively confirmed the playing date.
+  const gbFile=document.getElementById('gbFile');
+  const gbLabel=document.getElementById('gbFileLabel');
+  const gbBox=document.getElementById('gamebookImportBox');
+  const gate=document.getElementById('dateGateNotice');
+  if(gbFile) gbFile.disabled=!ok;
+  if(gbLabel){
+    gbLabel.style.pointerEvents=ok?'auto':'none';
+    gbLabel.style.cursor=ok?'pointer':'not-allowed';
+  }
+  if(gbBox){
+    gbBox.style.opacity=ok?'1':'.45';
+    gbBox.setAttribute('aria-disabled', ok?'false':'true');
+  }
+  if(gate){
+    gate.innerHTML=ok
+      ? `<strong>✓ Speldatum bekräftat: ${x.date.value}</strong><br>GameBook-importen är upplåst.`
+      : '<strong>1. Bekräfta speldatumet ovan.</strong><br>GameBook-importen låses upp först när datumet är bekräftat.';
+  }
   cboUpdateDateConfirmationUI();
 }
 
@@ -875,6 +924,7 @@ function removeGameBookImage(imageId){
 }
 
 async function handleGameBookImages(input){
+  if(!cboIsRoundDateConfirmed()){ alert('Bekräfta rätt speldatum innan du importerar GameBook-bilden.'); input.value=''; return; }
   const files=[...(input.files||[])];
   if(!files.length) return;
 
