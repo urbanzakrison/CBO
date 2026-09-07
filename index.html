@@ -199,9 +199,10 @@ button{cursor:pointer}
    <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
-    <label>Omgång</label><input id="newRoundNo" type="number">
-    <label>Datum</label><input id="newDate" type="date">
-    <label>Bana</label><input id="newCourse" value="Hamra">
+    <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
+    <label>Datum <span aria-hidden="true">*</span></label><input id="newDate" type="date" required aria-required="true" onchange="cboUpdateAdminGate()" oninput="cboUpdateAdminGate()">
+    <label>Bana <span aria-hidden="true">*</span></label><input id="newCourse" value="Hamra" required aria-required="true" oninput="cboUpdateAdminGate()">
+    <div class="sub" style="margin-top:6px">* Obligatoriskt. Datumet identifierar omgången och endast en officiell CBO-omgång kan publiceras per kalenderdag.</div>
     
 
 <div class="importbox">
@@ -248,7 +249,7 @@ button{cursor:pointer}
     </div>
     <label>Hälsningar från kanslisten</label>
     <textarea id="newReport" rows="5" placeholder="Skriv kanslistens rapport efter rundan..."></textarea>
-    <button class="primary" onclick="previewRound()">Förhandsgranska och räkna poäng</button>
+    <button id="previewRoundBtn" class="primary" type="button" onclick="previewRound()">Förhandsgranska och räkna poäng</button>
    </div>
    <div class="card hidden" id="previewCard"></div>
    <div class="card"><div class="cardhead"><h2>Spelarnas inloggning</h2><span class="badge">ADMIN</span></div><div class="sub">Golf-ID är spelarens identifierare. Här skapar du en ny personlig CBO-kod. Koden visas bara en gång.</div><div id="authPlayerList" style="margin-top:10px"></div></div>
@@ -419,6 +420,7 @@ function previewRound(){
 }
 async function saveDraft(){
  if(!draftPreview)return;
+ if(!draftPreview.date||!String(draftPreview.course||'').trim()){alert('Datum och bana är obligatoriska. Gå tillbaka och fyll i uppgifterna innan publicering.');return}
  if(!window.CBO_SUPABASE_CLIENT){alert('Supabase-klienten saknas.');return}
  const btn=document.querySelector('#previewCard .primary');
  if(btn){btn.disabled=true;btn.textContent='Publicerar…'}
@@ -686,13 +688,24 @@ function cboAdminInputs(){
   };
 }
 
+function cboUpdateAdminGate(){
+  const x=cboAdminInputs();
+  const btn=document.getElementById('previewRoundBtn');
+  if(!btn) return;
+  const ok=Boolean(x.round?.value && x.date?.value && String(x.course?.value||'').trim());
+  btn.disabled=!ok;
+  btn.title=ok?'':'Fyll i omgång, datum och bana för att gå vidare.';
+}
+
 function cboEnsureAdminDefaults(){
   const x=cboAdminInputs();
   if(x.date && !x.date.value){
     const d=new Date();
-    x.date.value=d.toISOString().slice(0,10);
+    const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);
+    x.date.value=local.toISOString().slice(0,10);
   }
   if(x.course && !x.course.value) x.course.value='Hamra';
+  cboUpdateAdminGate();
 }
 
 const _cboOldSetupAdmin = window.setupAdmin;
