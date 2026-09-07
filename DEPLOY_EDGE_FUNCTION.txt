@@ -1,0 +1,10 @@
+Supabase Dashboard:
+Edge Functions -> Deploy a new function -> parse-gamebook
+Använd innehållet i:
+supabase/functions/parse-gamebook/index.ts
+
+Lägg därefter secret:
+OPENAI_API_KEY = din OpenAI API-nyckel
+
+VIKTIGT:
+Klistra aldrig API-nyckeln i CBO:s config.js eller i denna chatt.
