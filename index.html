@@ -216,7 +216,7 @@ button{cursor:pointer}
   </section>
 
   <section id="admin" class="page content">
-   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.7</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.8</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN · 4.1.9</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
@@ -278,6 +278,7 @@ button{cursor:pointer}
     <button id="previewRoundBtn" class="primary" type="button" onclick="previewRound()">Förhandsgranska och räkna poäng</button>
    </div>
    <div class="card hidden" id="previewCard"></div>
+   <div class="card" id="adminPushCard"><div class="cardhead"><h2>Skicka CBO-notis</h2><span class="badge">ADMIN</span></div><div class="sub">Skicka en kort påminnelse eller information till alla enheter som har aktiverat CBO-notiser.</div><label>Rubrik</label><input id="adminPushTitle" maxlength="60" value="⛳ CBO" placeholder="⛳ CBO"><label>Meddelande</label><textarea id="adminPushMessage" rows="3" maxlength="180" placeholder="Till exempel: Glöm inte boka starttid till finalen."></textarea><div id="adminPushStatus" class="sub" style="margin-top:8px"></div><button id="adminPushButton" class="primary" type="button" onclick="cboSendAdminPush()">Skicka notis till alla</button></div>
    <div class="card"><div class="cardhead"><h2>Spelarnas inloggning</h2><span class="badge">ADMIN</span></div><div class="sub">Golf-ID är spelarens identifierare. Här skapar du en ny personlig CBO-kod. Koden visas bara en gång.</div><div id="authPlayerList" style="margin-top:10px"></div></div>
    <div class="card"><h2>Prototypdata</h2><div class="sub">Nya omgångar sparas lokalt i den här webbläsaren. Originaldata från CBO 2026 ligger orörd. I produktionsversionen flyttas detta till gemensam databas och Golf-ID + personlig CBO-kod.</div><button class="secondary" onclick="resetPrototype()">Återställ lokala testomgångar</button></div>
   </section>
@@ -1157,6 +1158,24 @@ async function cboToggleNotifications(){
   }catch(e){alert(e?.message||String(e));}
   finally{if(btn)btn.disabled=false;await cboRefreshNotificationUI();}
 }
+async function cboSendAdminPush(){
+  const title=(document.getElementById('adminPushTitle')?.value||'⛳ CBO').trim();
+  const message=(document.getElementById('adminPushMessage')?.value||'').trim();
+  const btn=document.getElementById('adminPushButton');
+  const status=document.getElementById('adminPushStatus');
+  if(!message){alert('Skriv ett meddelande först.');return;}
+  if(!window.CBO_SUPABASE_CLIENT){alert('Du behöver vara inloggad som kanslist.');return;}
+  if(!confirm(`Skicka denna CBO-notis till alla som har aktiverat notiser?\n\n${title}\n${message}`)) return;
+  if(btn) btn.disabled=true; if(status) status.textContent='Skickar…';
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_message',title,message}});
+    if(error||!data?.ok) throw new Error(error?.message||data?.error||'Notisen kunde inte skickas.');
+    if(status) status.textContent=`Skickat till ${Number(data.sent||0)} prenumeration${Number(data.sent||0)===1?'':'er'}.`;
+    const msg=document.getElementById('adminPushMessage'); if(msg) msg.value='';
+  }catch(e){if(status)status.textContent='Utskicket misslyckades.';alert(e?.message||String(e));}
+  finally{if(btn)btn.disabled=false;}
+}
+
 async function cboSendWinnerPush(roundNo,winner){
   if(!window.CBO_SUPABASE_CLIENT||!winner) return;
   const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_winner',round_no:Number(roundNo),winner_name:winner.name,net:Number(winner.net),gross:winner.gross==null?null:Number(winner.gross),points:Number(winner.points||4)}});
