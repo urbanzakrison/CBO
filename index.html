@@ -71,9 +71,10 @@ button{cursor:pointer}
 .react:disabled{opacity:.6;cursor:default}
 .latest-others{margin-top:10px}
 .page{display:none}.page.active{display:block}
-.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);max-width:560px;width:100%;display:grid;grid-template-columns:repeat(5,1fr);background:#fbf5e8f7;border-top:1px solid #cbb990;padding:7px 5px calc(7px + env(safe-area-inset-bottom));z-index:20}
-.nav button{border:0;background:none;color:#6d716c;font-size:10px;padding:4px 0}
-.nav button b{display:block;font-size:19px;margin-bottom:2px}.nav button.active{color:var(--g);font-weight:900}
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);max-width:560px;width:100%;display:grid;grid-template-columns:repeat(5,1fr);background:#fbf5e8f7;border-top:1px solid #cbb990;padding:7px 5px calc(7px + env(safe-area-inset-bottom));z-index:20;backdrop-filter:blur(10px)}
+.nav button{border:0;background:none;color:#6d716c;font-size:10px;padding:3px 1px;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.nav button b{display:grid;place-items:center;width:38px;height:38px;border:1px solid #cfbd94;border-radius:12px;background:#fff9ed;font-size:20px;line-height:1;box-shadow:0 2px 7px #40351e12;margin:0 auto 1px}.nav button.active{color:var(--g);font-weight:900}.nav button.active b{background:#e8efe6;border-color:#87a995;box-shadow:inset 0 0 0 1px #bfd0c4}
+@media(min-width:700px){.nav{max-width:700px;border:1px solid #cbb990;border-bottom:0;border-radius:18px 18px 0 0}.nav button{font-size:12px;padding:6px 2px}.nav button b{width:44px;height:44px;font-size:22px}}
 .scoregrid{display:grid;grid-template-columns:28px 1fr 42px 46px 46px 34px;gap:3px;align-items:center;font-size:12px}
 .scoregrid.header{color:var(--muted);font-weight:800;border-bottom:1px solid var(--line);padding:7px 0}
 .scoregrid.item{border-bottom:1px solid #e7decd;padding:8px 0}
@@ -84,6 +85,7 @@ button{cursor:pointer}
 .participant input{padding:8px;font-size:13px}
 .notice{font-size:12px;background:#e8efe6;border-radius:11px;padding:10px;line-height:1.4;margin-top:10px}
 .historybox{background:#ece3cf;border-radius:12px;padding:12px;margin-top:10px}
+.champ-row{display:grid;grid-template-columns:52px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #e8dfce}.champ-row:first-child{border-top:0}.champ-year{font-weight:900;color:var(--g)}.champ-note{font-size:11px;color:var(--muted)}
 .hidden{display:none!important}
 @media(min-width:700px){body{padding:22px}.app{border-radius:24px;overflow:hidden;min-height:900px}}
 </style>
@@ -208,6 +210,7 @@ button{cursor:pointer}
     <div id="playerList"></div>
    </div>
    <div class="card hidden" id="playerDetail"></div>
+   <div class="card" id="championHistory"><div class="cardhead"><h2>CBO-mästare</h2><span class="badge">SEDAN 2011</span></div><div class="sub" style="margin-bottom:8px">Officiella vinnare enligt CBO-historiken och pokalen.</div><div id="championHistoryRows"></div></div>
   </section>
 
   <section id="admin" class="page content">
@@ -279,10 +282,10 @@ button{cursor:pointer}
  </main>
 
  <nav class="nav">
-  <button class="active" data-page="home" onclick="showPage('home',this)"><b>⌂</b>Hem</button>
-  <button data-page="leaderboard" onclick="showPage('leaderboard',this)"><b>≡</b>Leaderboard</button>
+  <button class="active" data-page="home" onclick="showPage('home',this)"><b>🏌️</b>Hem</button>
+  <button data-page="leaderboard" onclick="showPage('leaderboard',this)"><b>🏆</b>Leaderboard</button>
   <button data-page="rounds" onclick="showPage('rounds',this)"><b>⛳</b>Omgångar</button>
-  <button data-page="players" onclick="showPage('players',this)"><b>◉</b>Spelare</button>
+  <button data-page="players" onclick="showPage('players',this)"><b>🏌️</b>Spelare</button>
   <button id="adminNavButton" data-page="admin" onclick="showPage('admin',this)"><b>⚙</b>Admin</button>
  </nav>
 </div>
@@ -390,7 +393,8 @@ function renderHome(){
    selectedSeason=selectedBefore; return;
  }
  const ranked=rankRound(latest.results||[]),winner=ranked[0];
- const winnerHtml=winner?`<div class="winner-hero"><div class="winner-label">🏆 Vinnare</div><div class="winner-name">${winner.name}</div><div class="winner-score">Netto ${winner.net}${winner.gross!=null?` · Brutto ${winner.gross}`:''} · ${winner.points??0} poäng</div><div class="winner-reactions"><div class="reaction-title">Fira segraren</div><div id="winnerReactionButtons" class="reactions">${['👏','🔥','🏆','😂','❤️'].map(e=>`<button class="react" data-emoji="${e}" onclick="toggleWinnerReaction(${latest.round},'${e}',this)">${e} <span class="count">0</span></button>`).join('')}</div><div id="winnerReactionStatus" class="sub" style="margin-top:6px">Laddar reaktioner…</div></div></div>`:'';
+ const winnerToPar=winner?hcpResult(winner.net):null;
+ const winnerHtml=winner?`<div class="winner-hero"><div class="winner-label">🏆 Vinnare</div><div class="winner-name">${winner.name}</div><div class="winner-score"><span class="hcp-result ${winnerToPar.cls}" style="font-size:22px;margin-right:7px">${winnerToPar.txt}</span> Netto ${winner.net}${winner.gross!=null?` · Brutto ${winner.gross}`:''} · ${winner.points??0} poäng</div><div class="winner-reactions"><div class="reaction-title">Fira segraren</div><div id="winnerReactionButtons" class="reactions">${['👏','🔥','🏆','😂','❤️'].map(e=>`<button class="react" data-emoji="${e}" onclick="toggleWinnerReaction(${latest.round},'${e}',this)">${e} <span class="count">0</span></button>`).join('')}</div><div id="winnerReactionStatus" class="sub" style="margin-top:6px">Laddar reaktioner…</div></div></div>`:'';
  const others=ranked.slice(1).map((r,i)=>{let hr=hcpResult(r.net);return `<div class="row"><span class="rank ${medal(i+1)}">${i+2}</span><span class="name">${r.name}<div class="sub">${r.gross!=null?`Brutto ${r.gross} · `:''}${r.points} p</div></span><span class="hcp-result ${hr.cls}">${hr.txt}</span><span class="value">${r.net}</span></div>`}).join('');
  document.getElementById('latestCard').innerHTML=`<div class="cardhead"><h2>Senaste omgången</h2><span class="badge">${latest.results.length>=4?'OFFICIELL':'EJ OFFICIELL'}</span></div><strong>Omgång ${latest.round}</strong><div class="sub">${latest.date} · ${latest.course||'Bana ej angiven'} · ${latest.results.length} deltagare · Resultat mot HCP/par 36</div>${winnerHtml}${others?`<div class="latest-others"><div class="kicker">Övriga resultat</div>${others}</div>`:''}`;
  let reports=roundReports(),rep=latest.recap||reports[latest.round]||'';
@@ -585,8 +589,18 @@ function generatePlayerCode(name){
 async function copyGeneratedCode(){try{await navigator.clipboard.writeText(generatedCode);alert('Koden är kopierad.')}catch{alert('Markera och kopiera koden manuellt.')}}
 function closeCodeModal(){generatedCode='';document.getElementById('codeModalValue').textContent='';document.getElementById('codeModal').classList.add('hidden')}
 
+const CBO_CHAMPIONS=[
+ [2011,'Tomas Frydebo',''],[2012,'Tomas Frydebo',''],[2013,'Tomas Frydebo',''],[2014,'Tomas Frydebo',''],[2015,'Tomas Frydebo',''],
+ [2016,'Johan Fagerholm',''],[2017,'Johan Fagerholm',''],[2018,'Tomas Frydebo',''],[2019,'Johan Fagerholm',''],[2020,'Tomas Frydebo',''],
+ [2021,'Martin Burefors','Topp 8 · 32,88'],[2022,'Johan Svanå','Topp 8 · 33,50'],[2023,'Johan Fagerholm','69 p'],[2024,'Johan Fagerholm','59 p'],[2025,'Urban Zakrison','70 p']
+];
+function renderChampionHistory(){
+ const el=document.getElementById('championHistoryRows');if(!el)return;
+ el.innerHTML=CBO_CHAMPIONS.slice().reverse().map(([y,n,note])=>`<div class="champ-row"><div class="champ-year">${y}</div><div><strong>${n}</strong>${note?`<div class="champ-note">${note}</div>`:''}</div><div>🏆</div></div>`).join('');
+}
+
 function renderAll(){
- let keep=selectedSeason;renderHome();selectedSeason=keep;syncSeasonSelectors();document.getElementById('seasonBadge').textContent=selectedSeason+' '+season().status;document.getElementById('playerSeasonBadge').textContent=season().status;renderLeaderboard();renderRounds();renderPlayers();document.getElementById('heroStatus').textContent=`CBO 2026 · PÅGÅENDE · ${(()=>{let k=selectedSeason;selectedSeason='2026';let n=rounds().length;selectedSeason=k;return n})()} OMGÅNGAR`;
+ let keep=selectedSeason;renderHome();selectedSeason=keep;syncSeasonSelectors();document.getElementById('seasonBadge').textContent=selectedSeason+' '+season().status;document.getElementById('playerSeasonBadge').textContent=season().status;renderLeaderboard();renderRounds();renderPlayers();renderChampionHistory();document.getElementById('heroStatus').textContent=`CBO 2026 · PÅGÅENDE · ${(()=>{let k=selectedSeason;selectedSeason='2026';let n=rounds().length;selectedSeason=k;return n})()} OMGÅNGAR`;
 }
 renderAll();
 </script>
