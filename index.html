@@ -422,6 +422,21 @@ async function saveDraft(){
  const btn=document.querySelector('#previewCard .primary');
  if(btn){btn.disabled=true;btn.textContent='Publicerar…'}
  try{
+   // Säkerhetskontroll: stoppa oavsiktlig dubbelpublicering innan skrivning.
+   const {data:dupCheck,error:dupError}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_round_duplicate_check',{
+     p_round_no:Number(draftPreview.round),
+     p_played_on:draftPreview.date
+   });
+   if(dupError) throw new Error('Kunde inte kontrollera omgången före publicering: '+(dupError.message||'okänt fel'));
+   if(!dupCheck||dupCheck.ok!==true) throw new Error(dupCheck?.error||'Dubblettkontrollen misslyckades.');
+   if(dupCheck.duplicate===true){
+     const reasons=[];
+     if(dupCheck.round_no_exists) reasons.push('omgångsnumret finns redan');
+     if(dupCheck.date_exists) reasons.push('datumet finns redan');
+     alert('Publicering stoppad: '+(reasons.join(' och ')||'omgången finns redan')+'. Ingen data har sparats.');
+     return;
+   }
+
    const payload=draftPreview.results.map(x=>({
      name:x.name,
      shcp:Number(x.shcp),
