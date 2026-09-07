@@ -216,7 +216,8 @@ button{cursor:pointer}
   </section>
 
   <section id="admin" class="page content">
-   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.4</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.6</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+   <div class="card"><div class="cardhead"><h2>Testa notiser</h2><span class="badge">ADMIN</span></div><div class="sub" style="margin-bottom:10px">Skickar en testnotis via den riktiga pushkedjan utan att skapa eller ändra någon CBO-omgång.</div><button id="testPushButton" class="secondary" type="button" onclick="cboSendTestPush()">Skicka testnotis</button><div id="testPushStatus" class="sub" style="margin-top:8px"></div></div>
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN · 4.1.9</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
@@ -1161,6 +1162,20 @@ async function cboSendWinnerPush(roundNo,winner){
   if(!window.CBO_SUPABASE_CLIENT||!winner) return;
   const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_winner',round_no:Number(roundNo),winner_name:winner.name,net:Number(winner.net),gross:winner.gross==null?null:Number(winner.gross),points:Number(winner.points||4)}});
   if(error) throw error; return data;
+}
+async function cboSendTestPush(){
+  const btn=document.getElementById('testPushButton'), status=document.getElementById('testPushStatus');
+  if(btn) btn.disabled=true; if(status) status.textContent='Skickar testnotis…';
+  try{
+    if(!window.CBO_SUPABASE_CLIENT) throw new Error('Du behöver vara inloggad i CBO.');
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_winner',round_no:26,winner_name:'TEST – Urban Zakrison',net:34,gross:44,points:4}});
+    if(error) throw error;
+    if(!data?.ok) throw new Error(data?.error||'Testnotisen kunde inte skickas.');
+    if(status) status.textContent=`Test skickat till ${Number(data.sent||0)} enhet(er).`;
+  }catch(e){
+    if(status) status.textContent='Testet misslyckades.';
+    alert(e?.message||String(e));
+  }finally{if(btn) btn.disabled=false;}
 }
 window.addEventListener('load',()=>{cboRefreshNotificationUI().catch(()=>{});});
 </script>
