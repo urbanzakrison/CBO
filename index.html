@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.2.0 – Classic Boys Open</title>
+<title>CBO 4.2.4 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -176,6 +176,7 @@ button{cursor:pointer}
    <div class="card kansli" id="kansliCard"></div>
    <div class="card"><div class="cardhead"><h2 id="homeTotalTitle">Totalen 2026</h2><span class="badge" onclick="showPage('leaderboard')">Visa alla</span></div><div id="homeTop"></div></div>
    <div class="card" id="currentUserCard"><h2 id="currentUserName">Inloggad spelare</h2><div class="sub" id="currentUserRole">Inloggad</div><div class="metric" id="currentPlayerMetrics"></div></div>
+   <div class="card" id="notificationCard"><div class="cardhead"><h2>Notiser</h2><span class="badge">NYTT</span></div><div class="sub" id="notificationStatus">Kontrollerar om notiser kan aktiveras…</div><button id="notificationButton" class="secondary" type="button" onclick="cboToggleNotifications()">Aktivera notiser</button><div class="sub" style="margin-top:7px">När en ny officiell omgång publiceras får du en notis om vem som vann. På iPhone krävs att CBO är tillagd på hemskärmen.</div></div>
   </section>
 
   <section id="leaderboard" class="page content">
@@ -215,7 +216,7 @@ button{cursor:pointer}
   </section>
 
   <section id="admin" class="page content">
-   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.0</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.4</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN · 4.1.9</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
@@ -520,6 +521,8 @@ async function saveDraft(){
    if(!data||data.ok!==true)throw new Error(data?.error||'Servern avvisade omgången.');
 
    const publishedRoundNo=Number(data.round_no||draftPreview.round);
+   const publishedWinner=rankRound(draftPreview.results||[])[0]||null;
+   const publishedOfficial=Boolean(draftPreview.official);
    draftPreview=null;
    document.getElementById('previewCard').classList.add('hidden');
    if(typeof window.CBO_LOAD_LIVE_LEADERBOARD==='function') await window.CBO_LOAD_LIVE_LEADERBOARD();
@@ -527,6 +530,9 @@ async function saveDraft(){
    setupAdmin();
    showPage('rounds');
    openRound(publishedRoundNo);
+   if(publishedOfficial && publishedWinner){
+     cboSendWinnerPush(publishedRoundNo,publishedWinner).catch(err=>console.warn('Pushnotis kunde inte skickas',err));
+   }
    alert(`Omgång ${publishedRoundNo} är publicerad. Resultat, leaderboard och kanslistens hälsning är uppdaterade.`);
  }catch(e){
    alert('Publicering misslyckades: '+(e?.message||String(e)));
@@ -1094,4 +1100,69 @@ function resetGameBookImport(){
 }
 
 </script>
+
+<script id="cbo-push-424">
+const CBO_VAPID_PUBLIC_KEY='BDnNRZHmNVWQAX7gWAgcnNJhnpq5OaCFHyntwMYLpNtKyrXn3EMiNA45muXOu04O78IYc9iCsD1gRApFOh-W-pc';
+let CBO_PUSH_SUBSCRIPTION=null;
+function cboBase64ToUint8Array(base64String){
+  const padding='='.repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64); const out=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i); return out;
+}
+function cboIsIos(){return /iphone|ipad|ipod/i.test(navigator.userAgent)}
+function cboIsStandalone(){return window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone===true}
+async function cboPushRegistration(){
+  if(!('serviceWorker' in navigator)) throw new Error('Den här webbläsaren stöder inte webbnotiser.');
+  await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+  return await navigator.serviceWorker.ready;
+}
+async function cboRefreshNotificationUI(){
+  const status=document.getElementById('notificationStatus'), btn=document.getElementById('notificationButton');
+  if(!status||!btn) return;
+  if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){
+    status.textContent='Notiser stöds inte i den här webbläsaren.'; btn.disabled=true; return;
+  }
+  if(cboIsIos()&&!cboIsStandalone()){
+    status.textContent='På iPhone: lägg först CBO på hemskärmen och öppna appen därifrån.'; btn.textContent='Aktivera notiser'; btn.disabled=false; return;
+  }
+  try{
+    const reg=await cboPushRegistration();
+    CBO_PUSH_SUBSCRIPTION=await reg.pushManager.getSubscription();
+    if(CBO_PUSH_SUBSCRIPTION){status.textContent='Notiser är aktiverade på den här enheten.';btn.textContent='Stäng av notiser';}
+    else if(Notification.permission==='denied'){status.textContent='Notiser är blockerade i webbläsarens inställningar.';btn.textContent='Notiser blockerade';btn.disabled=true;}
+    else {status.textContent='Få en notis när en ny CBO-vinnare publiceras.';btn.textContent='Aktivera notiser';btn.disabled=false;}
+  }catch(e){status.textContent='Notiser kan inte aktiveras just nu.';console.warn(e)}
+}
+async function cboToggleNotifications(){
+  const btn=document.getElementById('notificationButton'); if(btn) btn.disabled=true;
+  try{
+    if(cboIsIos()&&!cboIsStandalone()){
+      alert('På iPhone behöver CBO först läggas till på hemskärmen. Öppna sedan CBO från hemskärmen och tryck Aktivera notiser igen.'); return;
+    }
+    const reg=await cboPushRegistration();
+    let sub=await reg.pushManager.getSubscription();
+    if(sub){
+      if(window.CBO_SUPABASE_CLIENT) await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'unsubscribe',endpoint:sub.endpoint}});
+      await sub.unsubscribe(); CBO_PUSH_SUBSCRIPTION=null;
+    }else{
+      const permission=await Notification.requestPermission();
+      if(permission!=='granted') throw new Error('Du behöver godkänna notiser för CBO.');
+      sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:cboBase64ToUint8Array(CBO_VAPID_PUBLIC_KEY)});
+      if(!window.CBO_SUPABASE_CLIENT) throw new Error('Du behöver vara inloggad i CBO.');
+      const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'subscribe',subscription:sub.toJSON()}});
+      if(error||!data?.ok){await sub.unsubscribe();throw new Error(error?.message||data?.error||'Prenumerationen kunde inte sparas.');}
+      CBO_PUSH_SUBSCRIPTION=sub;
+    }
+  }catch(e){alert(e?.message||String(e));}
+  finally{if(btn)btn.disabled=false;await cboRefreshNotificationUI();}
+}
+async function cboSendWinnerPush(roundNo,winner){
+  if(!window.CBO_SUPABASE_CLIENT||!winner) return;
+  const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_winner',round_no:Number(roundNo),winner_name:winner.name,net:Number(winner.net),gross:winner.gross==null?null:Number(winner.gross),points:Number(winner.points||4)}});
+  if(error) throw error; return data;
+}
+window.addEventListener('load',()=>{cboRefreshNotificationUI().catch(()=>{});});
+</script>
+
 </body></html>
