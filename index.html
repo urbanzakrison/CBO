@@ -367,6 +367,28 @@ function renderLeaderboard(){
    return `<div class="row"><span class="rank ${medal(i)}">${i+1}</span><span class="name">${s.name}${note?`<div class="sub">${note}</div>`:''}</span><span class="value">${fmt(s.value)}${unit}</span></div>`;
  }).join('')+histNote;
 }
+function cboCurrentPlayerName(){
+ const domName=(document.getElementById('currentUserName')?.textContent||'').trim();
+ if(domName && domName!=='Inloggad spelare') return domName;
+ return (window.CBO_CURRENT_PLAYER?.name||'').trim();
+}
+function cboCurrentPlayerHomeStats(name){
+ if(!name) return null;
+ const get=(cat)=>leaderboard(cat).find(x=>x.name===name)?.value;
+ const points=get('total'), attendance=get('attendance'), net=get('net'), eff=get('eff');
+ if(points!=null || attendance!=null || net!=null || eff!=null){
+   return {name,points:points??0,attendance:attendance??0,net:net??null,eff:eff??null};
+ }
+ return dynamicStats().find(x=>x.name===name)||null;
+}
+function cboRefreshCurrentPlayerCard(){
+ const name=cboCurrentPlayerName();
+ const card=document.getElementById('currentUserCard');
+ const metrics=document.getElementById('currentPlayerMetrics');
+ if(!card||!metrics) return;
+ const u=cboCurrentPlayerHomeStats(name);
+ metrics.innerHTML=u?`<div><span class="sub">Totalen</span><strong>${fmt(u.points)}</strong></div><div><span class="sub">Närvaro</span><strong>${fmt(u.attendance)}</strong></div><div><span class="sub">Netto</span><strong>${fmt(u.net)}</strong></div><div><span class="sub">Effektivitet</span><strong>${fmt(u.eff)}</strong></div>`:`<div class="sub" style="grid-column:1/-1">${name?'Live-statistik hämtas…':'Logga in för att se din statistik.'}</div>`;
+}
 function renderHome(){
  const s26=DATA.seasons['2026']; selectedBefore=selectedSeason; selectedSeason='2026';
  const rr=rounds(),latest=rr[0],ranked=rankRound(latest.results);
@@ -378,10 +400,10 @@ function renderHome(){
  document.getElementById('homeTop').innerHTML=totals.length
    ? totals.slice(0,3).map((s,i)=>`<div class="row"><span class="rank ${medal(i)}">${i+1}</span><span class="name">${s.name}</span><span class="value">${fmt(s.value)}</span></div>`).join('')
    : `<div class="unavailable">${window.CBO_LIVE_ERROR ? 'Live-data kunde inte hämtas.' : 'Väntar på live-data…'}</div>`;
- let currentName=window.CBO_CURRENT_PLAYER?.name||'';
- let u=(window.CBO_LIVE_STATS||dynamicStats()).find(x=>x.name===currentName);
+ let currentName=cboCurrentPlayerName();
+ let u=cboCurrentPlayerHomeStats(currentName);
  let metrics=document.getElementById('currentPlayerMetrics');
- if(metrics){metrics.innerHTML=u?`<div><span class="sub">Totalen</span><strong>${u.points}</strong></div><div><span class="sub">Närvaro</span><strong>${u.attendance}</strong></div><div><span class="sub">Netto</span><strong>${fmt(u.net)}</strong></div><div><span class="sub">Effektivitet</span><strong>${fmt(u.eff)}</strong></div>`:`<div class="sub" style="grid-column:1/-1">${currentName?'Live-statistik hämtas…':'Logga in för att se din statistik.'}</div>`;}
+ if(metrics){metrics.innerHTML=u?`<div><span class="sub">Totalen</span><strong>${fmt(u.points)}</strong></div><div><span class="sub">Närvaro</span><strong>${fmt(u.attendance)}</strong></div><div><span class="sub">Netto</span><strong>${fmt(u.net)}</strong></div><div><span class="sub">Effektivitet</span><strong>${fmt(u.eff)}</strong></div>`:`<div class="sub" style="grid-column:1/-1">${currentName?'Live-statistik hämtas…':'Logga in för att se din statistik.'}</div>`;}
  selectedSeason=selectedBefore; 
 }
 function renderRounds(){
@@ -541,6 +563,18 @@ renderAll();
 <script src="live-leaderboard.js"></script>
 <script src="auth-client.js"></script>
 <script>
+// Keep the Home statistics synchronized with whichever player auth-client.js shows as logged in.
+(function(){
+ const nameEl=document.getElementById('currentUserName');
+ if(nameEl){
+   new MutationObserver(()=>cboRefreshCurrentPlayerCard()).observe(nameEl,{childList:true,subtree:true,characterData:true});
+ }
+ let last='';
+ setInterval(()=>{
+   const now=cboCurrentPlayerName();
+   if(now!==last){ last=now; cboRefreshCurrentPlayerCard(); }
+ },500);
+})();
 function gameBookRound26Fixture(){
   return [
     {name:'Urban Zakrison', shcp:20, net:34},
