@@ -200,9 +200,13 @@ button{cursor:pointer}
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
-    <label>Datum <span aria-hidden="true">*</span></label><input id="newDate" type="date" required aria-required="true" onchange="cboUpdateAdminGate()" oninput="cboUpdateAdminGate()">
+    <label>Datum <span aria-hidden="true">*</span></label><input id="newDate" type="date" required aria-required="true" onchange="cboOnRoundDateChanged()" oninput="cboOnRoundDateChanged()">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+      <button id="confirmDateBtn" class="secondary" type="button" onclick="cboConfirmRoundDate()" style="flex:0 0 auto">Bekräfta datum</button>
+      <span id="dateConfirmStatus" class="sub">Datumet är inte bekräftat</span>
+    </div>
     <label>Bana <span aria-hidden="true">*</span></label><input id="newCourse" value="Hamra" required aria-required="true" oninput="cboUpdateAdminGate()">
-    <div class="sub" style="margin-top:6px">* Obligatoriskt. Datumet identifierar omgången och endast en officiell CBO-omgång kan publiceras per kalenderdag.</div>
+    <div class="sub" style="margin-top:6px">* Datum och bana är obligatoriska. Dagens datum är bara ett förslag: du måste aktivt bekräfta rätt speldatum innan du kan gå vidare. Endast en officiell CBO-omgång kan publiceras per kalenderdag.</div>
     
 
 <div class="importbox">
@@ -415,12 +419,13 @@ function collectDraft(){
  return{round:Number(document.getElementById('newRoundNo').value),date:document.getElementById('newDate').value,course:document.getElementById('newCourse').value.trim(),report:document.getElementById('newReport').value.trim(),official,results:list};
 }
 function previewRound(){
- draftPreview=collectDraft();if(!draftPreview.round||!draftPreview.date||!draftPreview.course){alert('Fyll i omgång, datum och bana.');return}if(!draftPreview.results.length){alert('Markera deltagare och fyll i SHCP, netto och brutto.');return}
+ draftPreview=collectDraft();if(!draftPreview.round||!draftPreview.date||!draftPreview.course){alert('Fyll i omgång, datum och bana.');return}if(!cboIsRoundDateConfirmed()){alert('Bekräfta rätt speldatum innan du går vidare.');return}if(!draftPreview.results.length){alert('Markera deltagare och fyll i SHCP, netto och brutto.');return}
  let c=document.getElementById('previewCard');c.classList.remove('hidden');c.innerHTML=`<div class="cardhead"><h2>Granska före publicering</h2><span class="badge">${draftPreview.official?'OFFICIELL':'EJ OFFICIELL'}</span></div><div class="sub">Omgång ${draftPreview.round} · ${draftPreview.date} · ${draftPreview.course}</div><div class="scoregrid header"><span>#</span><span>Namn</span><span>SHCP</span><span>Netto</span><span>Brutto</span><span>Pts</span></div>`+draftPreview.results.map((x,i)=>`<div class="scoregrid item"><b>${i+1}</b><span>${x.name}</span><span>${x.shcp}</span><b>${x.net}</b><span>${x.gross}</span><b>${x.points??'–'}</b></div>`).join('')+`<button class="primary" onclick="saveDraft()">Publicera omgången</button>`;c.scrollIntoView({behavior:'smooth'});
 }
 async function saveDraft(){
  if(!draftPreview)return;
  if(!draftPreview.date||!String(draftPreview.course||'').trim()){alert('Datum och bana är obligatoriska. Gå tillbaka och fyll i uppgifterna innan publicering.');return}
+ if(!cboIsRoundDateConfirmed() || window.CBO_DATE_CONFIRMED_VALUE!==draftPreview.date){alert('Speldatumet måste vara aktivt bekräftat innan publicering. Gå tillbaka och bekräfta datumet igen.');return}
  if(!window.CBO_SUPABASE_CLIENT){alert('Supabase-klienten saknas.');return}
  const btn=document.querySelector('#previewCard .primary');
  if(btn){btn.disabled=true;btn.textContent='Publicerar…'}
@@ -602,6 +607,10 @@ function applyGameBookReview(){
 
   cboEnsureAdminDefaults();
   const ai=cboAdminInputs();
+  if(!cboIsRoundDateConfirmed()){
+    alert('Bekräfta rätt speldatum innan du för över resultatet till omgången.');
+    return;
+  }
   const round=Number(ai.round?.value||27);
   const date=ai.date?.value||'';
   const course=ai.course?.value||'Hamra';
@@ -688,13 +697,55 @@ function cboAdminInputs(){
   };
 }
 
+window.CBO_DATE_CONFIRMED_VALUE = window.CBO_DATE_CONFIRMED_VALUE || '';
+
+function cboIsRoundDateConfirmed(){
+  const x=cboAdminInputs();
+  const value=x.date?.value||'';
+  return Boolean(value && window.CBO_DATE_CONFIRMED_VALUE===value);
+}
+
+function cboUpdateDateConfirmationUI(){
+  const x=cboAdminInputs();
+  const value=x.date?.value||'';
+  const confirmed=cboIsRoundDateConfirmed();
+  const btn=document.getElementById('confirmDateBtn');
+  const status=document.getElementById('dateConfirmStatus');
+  if(btn){
+    btn.disabled=!value;
+    btn.textContent=confirmed?'Datum bekräftat ✓':'Bekräfta datum';
+  }
+  if(status){
+    status.textContent=confirmed?`Bekräftat speldatum: ${value}`:(value?'Kontrollera datumet och bekräfta för att gå vidare':'Välj speldatum först');
+  }
+}
+
+function cboOnRoundDateChanged(){
+  const x=cboAdminInputs();
+  const value=x.date?.value||'';
+  if(window.CBO_DATE_CONFIRMED_VALUE!==value) window.CBO_DATE_CONFIRMED_VALUE='';
+  cboUpdateDateConfirmationUI();
+  cboUpdateAdminGate();
+}
+
+function cboConfirmRoundDate(){
+  const x=cboAdminInputs();
+  const value=x.date?.value||'';
+  if(!value){alert('Välj rätt speldatum först.');return}
+  window.CBO_DATE_CONFIRMED_VALUE=value;
+  cboUpdateDateConfirmationUI();
+  cboUpdateAdminGate();
+}
+
 function cboUpdateAdminGate(){
   const x=cboAdminInputs();
   const btn=document.getElementById('previewRoundBtn');
   if(!btn) return;
-  const ok=Boolean(x.round?.value && x.date?.value && String(x.course?.value||'').trim());
+  const fieldsOk=Boolean(x.round?.value && x.date?.value && String(x.course?.value||'').trim());
+  const ok=fieldsOk && cboIsRoundDateConfirmed();
   btn.disabled=!ok;
-  btn.title=ok?'':'Fyll i omgång, datum och bana för att gå vidare.';
+  btn.title=ok?'':(!fieldsOk?'Fyll i omgång, datum och bana för att gå vidare.':'Bekräfta speldatumet för att gå vidare.');
+  cboUpdateDateConfirmationUI();
 }
 
 function cboEnsureAdminDefaults(){
@@ -703,8 +754,10 @@ function cboEnsureAdminDefaults(){
     const d=new Date();
     const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);
     x.date.value=local.toISOString().slice(0,10);
+    window.CBO_DATE_CONFIRMED_VALUE='';
   }
   if(x.course && !x.course.value) x.course.value='Hamra';
+  cboUpdateDateConfirmationUI();
   cboUpdateAdminGate();
 }
 
