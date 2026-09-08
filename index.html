@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.5.0 – Classic Boys Open</title>
+<title>CBO 4.5.1 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -163,6 +163,16 @@ button{cursor:pointer}
 .stats-record{padding:11px 0;border-top:1px solid #e8dfce}.stats-record:first-child{border-top:0}
 .stats-record strong{display:block;font-size:15px;margin-top:2px}
 .stats-summary{font-family:Georgia,"Times New Roman",serif;line-height:1.5;background:#f5f0df;border-radius:12px;padding:12px;margin-top:12px}
+
+.stats-list{margin:4px 0 12px}
+.stats-list-title{font-size:12px;color:var(--muted);font-weight:800;margin-top:12px}
+.stats-rank-row{display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:start;padding:9px 0;border-top:1px solid #e8dfce}
+.stats-rank-row:first-child{border-top:0}
+.stats-rank-no{font-weight:900;color:var(--g)}
+.stats-rank-main{font-weight:750;min-width:0}
+.stats-rank-meta{font-size:11px;color:var(--muted);font-weight:500;margin-top:2px}
+.stats-rank-value{font-weight:900;white-space:nowrap}
+.stats-more{width:100%;border:1px solid #bca879;background:#fffaf0;color:var(--g);border-radius:10px;padding:9px 10px;font-weight:850;margin:3px 0 8px}
 </style>
 </head>
 <body>
@@ -239,7 +249,7 @@ button{cursor:pointer}
 
   <section id="statistics" class="page content">
     <div class="card">
-      <div class="cardhead"><div><h2>Statistik</h2><div class="sub">CBO i siffror – rekord och säsongsfakta.</div></div><span class="badge">CBO</span></div>
+      <div class="cardhead"><div><h2>Statistik</h2><div class="sub">CBO i siffror – rekord, rankingar och säsongsfakta.</div></div><span class="badge">CBO</span></div>
       <label>Säsong</label>
       <select id="statsSeason" onchange="cboLoadSeasonStats()">
         <option value="2026" selected>2026</option><option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option><option value="2022">2022</option><option value="2021">2021</option>
@@ -636,39 +646,62 @@ function toggleReact(b){b.classList.toggle('active')}
 
 function normalizeGolfId(v){let d=String(v||'').replace(/\D/g,'').slice(0,9);return d.length>6?d.slice(0,6)+'-'+d.slice(6):d}
 
-function cboStatsNames(x){return Array.isArray(x)&&x.length?x.join(', '):'–'}
-function cboStatsRecord(title,x){
- if(!x||x.score==null)return `<div class="stats-record"><span class="sub">${title}</span><strong>–</strong></div>`;
- return `<div class="stats-record"><span class="sub">${title}</span><strong>${x.name} · ${x.score} slag</strong><div class="sub">Omgång ${x.round}${x.date?' · '+x.date:''}${x.course?' · '+x.course:''}</div></div>`;
+const CBO_STATS_EXPANDED={};
+
+function cboStatsResults(year){
+ const y=String(year);
+ if(y==='2026' && Array.isArray(window.CBO_LIVE_ROUNDS)){
+  return window.CBO_LIVE_ROUNDS.filter(r=>r.official!==false).flatMap(r=>(r.results||[]).map(x=>({round:r.round,date:r.date,course:r.course,official:r.official,...x})));
+ }
+ return (DATA?.seasons?.[y]?.results||[]).slice();
 }
+function cboStatsPlayerRows(year){
+ const by={};
+ cboStatsResults(year).forEach(r=>{
+  if(!r?.name)return;
+  const s=by[r.name]||(by[r.name]={name:r.name,attendance:0,wins:0,top3:0,bestNet:null,worstNet:null,bestGross:null,worstGross:null});
+  s.attendance++;
+  const pts=Number(r.points||0); if(pts===4)s.wins++; if(pts>=2)s.top3++;
+  const rec={name:r.name,score:null,round:r.round,date:r.date,course:r.course};
+  if(r.net!=null&&Number.isFinite(Number(r.net))){rec.score=Number(r.net);if(!s.bestNet||rec.score<s.bestNet.score)s.bestNet={...rec};if(!s.worstNet||rec.score>s.worstNet.score)s.worstNet={...rec};}
+  if(r.gross!=null&&Number.isFinite(Number(r.gross))){rec.score=Number(r.gross);if(!s.bestGross||rec.score<s.bestGross.score)s.bestGross={...rec};if(!s.worstGross||rec.score>s.worstGross.score)s.worstGross={...rec};}
+ });
+ return Object.values(by);
+}
+function cboStatsRankList(key,title,rows,valueFn,metaFn){
+ const expanded=!!CBO_STATS_EXPANDED[key],shown=expanded?rows:rows.slice(0,5);
+ const body=shown.length?shown.map((x,i)=>`<div class="stats-rank-row"><div class="stats-rank-no">${i+1}.</div><div class="stats-rank-main">${x.name}${metaFn?`<div class="stats-rank-meta">${metaFn(x)}</div>`:''}</div><div class="stats-rank-value">${valueFn(x)}</div></div>`).join(''):`<div class="sub" style="padding:8px 0">Ingen statistik tillgänglig.</div>`;
+ const button=rows.length>5?`<button type="button" class="stats-more" onclick="cboToggleStatsList('${key}')">${expanded?'Visa färre':'Visa alla'} · ${rows.length}</button>`:'';
+ return `<div class="stats-list"><div class="stats-list-title">${title}</div>${body}${button}</div>`;
+}
+function cboToggleStatsList(key){CBO_STATS_EXPANDED[key]=!CBO_STATS_EXPANDED[key];cboLoadSeasonStats();}
+function cboRoundMeta(x){return `Omgång ${x.round??'–'}${x.date?' · '+x.date:''}${x.course?' · '+x.course:''}`;}
 async function cboLoadSeasonStats(){
  const el=document.getElementById('statsBody'),sel=document.getElementById('statsSeason');
  if(!el||!sel||!window.CBO_SUPABASE_CLIENT)return;
- const year=Number(sel.value); el.innerHTML='<div class="sub" style="margin-top:10px">Statistik hämtas…</div>';
+ const year=Number(sel.value);el.innerHTML='<div class="sub" style="margin-top:10px">Statistik hämtas…</div>';
  try{
-  const {data:s,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_season_stats',{p_year:year});
-  if(error)throw error;
-  const att=s.attendance||{},wins=s.wins||{},top3=s.top3||{};
-  el.innerHTML=`
-   <div class="stats-summary"><strong>CBO ${year} i siffror</strong><br>${s.official_rounds??0} officiella rundor · ${s.starts??0} starter · ${s.unique_players??0} deltagare · ${Number(s.total_gross||0).toLocaleString('sv-SE')} bruttoslag.</div>
-   <div class="stats-grid">
-    <div class="stats-box"><span class="stats-label">Officiella rundor</span><strong>${s.official_rounds??0}</strong></div>
-    <div class="stats-box"><span class="stats-label">Deltagartillfällen</span><strong>${s.starts??0}</strong></div>
-    <div class="stats-box"><span class="stats-label">Unika deltagare</span><strong>${s.unique_players??0}</strong></div>
-    <div class="stats-box"><span class="stats-label">Bruttoslag totalt</span><strong>${Number(s.total_gross||0).toLocaleString('sv-SE')}</strong></div>
-    <div class="stats-box"><span class="stats-label">Nettoslag totalt</span><strong>${Number(s.total_net||0).toLocaleString('sv-SE')}</strong></div>
-    <div class="stats-box"><span class="stats-label">Snitt brutto</span><strong>${fmt(s.avg_gross)}</strong></div>
-   </div>
-   <h3>Rekord ${year}</h3>
-   ${cboStatsRecord('🏅 Bästa nettoslagsrunda',s.best_net)}
-   ${cboStatsRecord('😬 Sämsta nettoslagsrunda',s.worst_net)}
-   ${cboStatsRecord('🏅 Bästa bruttoslagsrunda',s.best_gross)}
-   ${cboStatsRecord('😬 Sämsta bruttoslagsrunda',s.worst_gross)}
-   <h3>Säsongen</h3>
-   <div class="stats-record"><span class="sub">👟 Högst närvaro</span><strong>${cboStatsNames(att.players)} · ${att.count??0} rundor</strong></div>
-   <div class="stats-record"><span class="sub">🏆 Flest segrar</span><strong>${cboStatsNames(wins.players)} · ${wins.count??0}</strong></div>
-   <div class="stats-record"><span class="sub">🥉 Flest topp 3</span><strong>${cboStatsNames(top3.players)} · ${top3.count??0}</strong></div>`;
- }catch(e){el.innerHTML=`<div class="notice" style="margin-top:10px">Statistiken kunde inte hämtas: ${e?.message||String(e)}</div>`}
+  const {data:s,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_season_stats',{p_year:year});if(error)throw error;
+  const players=cboStatsPlayerRows(year);
+  const bestNet=players.filter(x=>x.bestNet).map(x=>x.bestNet).sort((a,b)=>a.score-b.score||a.name.localeCompare(b.name,'sv'));
+  const worstNet=players.filter(x=>x.worstNet).map(x=>x.worstNet).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'sv'));
+  const bestGross=players.filter(x=>x.bestGross).map(x=>x.bestGross).sort((a,b)=>a.score-b.score||a.name.localeCompare(b.name,'sv'));
+  const worstGross=players.filter(x=>x.worstGross).map(x=>x.worstGross).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'sv'));
+  const attendance=players.slice().sort((a,b)=>b.attendance-a.attendance||a.name.localeCompare(b.name,'sv'));
+  const wins=players.slice().sort((a,b)=>b.wins-a.wins||b.attendance-a.attendance||a.name.localeCompare(b.name,'sv'));
+  const top3=players.slice().sort((a,b)=>b.top3-a.top3||b.attendance-a.attendance||a.name.localeCompare(b.name,'sv'));
+  el.innerHTML=`<div class="stats-summary"><strong>CBO ${year} i siffror</strong><br>${s.official_rounds??0} officiella rundor · ${s.starts??0} starter · ${s.unique_players??0} deltagare · ${Number(s.total_gross||0).toLocaleString('sv-SE')} bruttoslag.</div>
+  <div class="stats-grid"><div class="stats-box"><span class="stats-label">Officiella rundor</span><strong>${s.official_rounds??0}</strong></div><div class="stats-box"><span class="stats-label">Deltagartillfällen</span><strong>${s.starts??0}</strong></div><div class="stats-box"><span class="stats-label">Unika deltagare</span><strong>${s.unique_players??0}</strong></div><div class="stats-box"><span class="stats-label">Bruttoslag totalt</span><strong>${Number(s.total_gross||0).toLocaleString('sv-SE')}</strong></div><div class="stats-box"><span class="stats-label">Nettoslag totalt</span><strong>${Number(s.total_net||0).toLocaleString('sv-SE')}</strong></div><div class="stats-box"><span class="stats-label">Snitt brutto</span><strong>${fmt(s.avg_gross)}</strong></div></div>
+  <h3>Rekord ${year}</h3>
+  ${cboStatsRankList(`bestnet-${year}`,'🏅 Bästa nettoslagsrunda',bestNet,x=>`${x.score} slag`,cboRoundMeta)}
+  ${cboStatsRankList(`worstnet-${year}`,'😬 Sämsta nettoslagsrunda',worstNet,x=>`${x.score} slag`,cboRoundMeta)}
+  ${cboStatsRankList(`bestgross-${year}`,'🏅 Bästa bruttoslagsrunda',bestGross,x=>`${x.score} slag`,cboRoundMeta)}
+  ${cboStatsRankList(`worstgross-${year}`,'😬 Sämsta bruttoslagsrunda',worstGross,x=>`${x.score} slag`,cboRoundMeta)}
+  <h3>Säsongen</h3>
+  ${cboStatsRankList(`attendance-${year}`,'👟 Högst närvaro',attendance,x=>`${x.attendance} rundor`)}
+  ${cboStatsRankList(`wins-${year}`,'🏆 Flest segrar',wins,x=>String(x.wins))}
+  ${cboStatsRankList(`top3-${year}`,'🥉 Flest topp 3',top3,x=>String(x.top3))}`;
+ }catch(e){el.innerHTML=`<div class="notice" style="margin-top:10px">Statistiken kunde inte hämtas: ${e?.message||String(e)}</div>`;}
 }
 
 // cboLogin/cboLogout och sessionhantering finns i auth-client.js i CBO 3.3.
