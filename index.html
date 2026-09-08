@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.4.0 – Classic Boys Open</title>
+<title>CBO 4.5.0 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -152,6 +152,18 @@ button{cursor:pointer}
 .pilot-line.wait{color:#7b6c51}
 </style>
 
+<style id="cbo45">
+.nav{grid-template-columns:repeat(6,1fr)}
+.nav button{font-size:9px}
+@media(min-width:700px){.nav button{font-size:10px}}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.stats-box{background:#f3ecdd;border-radius:12px;padding:10px}
+.stats-label{font-size:10px;color:var(--muted);font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.stats-box strong{display:block;font-size:20px;margin-top:3px;color:var(--g)}
+.stats-record{padding:11px 0;border-top:1px solid #e8dfce}.stats-record:first-child{border-top:0}
+.stats-record strong{display:block;font-size:15px;margin-top:2px}
+.stats-summary{font-family:Georgia,"Times New Roman",serif;line-height:1.5;background:#f5f0df;border-radius:12px;padding:12px;margin-top:12px}
+</style>
 </head>
 <body>
 <div id="loginScreen" class="login-screen">
@@ -222,6 +234,18 @@ button{cursor:pointer}
    </div>
    <div class="card hidden" id="playerDetail"></div>
    <div class="card" id="championHistory"><div class="cardhead"><h2>CBO-mästare</h2><span class="badge">SEDAN 2011</span></div><div class="sub" style="margin-bottom:8px">Officiella vinnare enligt CBO-historiken och pokalen.</div><div id="championHistoryRows"></div></div>
+  </section>
+
+
+  <section id="statistics" class="page content">
+    <div class="card">
+      <div class="cardhead"><div><h2>Statistik</h2><div class="sub">CBO i siffror – rekord och säsongsfakta.</div></div><span class="badge">CBO</span></div>
+      <label>Säsong</label>
+      <select id="statsSeason" onchange="cboLoadSeasonStats()">
+        <option value="2026" selected>2026</option><option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option><option value="2022">2022</option><option value="2021">2021</option>
+      </select>
+      <div id="statsBody"><div class="sub" style="margin-top:10px">Statistik hämtas…</div></div>
+    </div>
   </section>
 
   <section id="admin" class="page content">
@@ -297,7 +321,8 @@ button{cursor:pointer}
   <button class="active" type="button" data-page="home"><b>🏌️</b>Hem</button>
   <button type="button" data-page="leaderboard"><b>🏆</b>Leaderboard</button>
   <button type="button" data-page="rounds"><b>⛳</b>Omgångar</button>
-  <button type="button" data-page="players"><b>🏌️</b>Spelare</button>
+  <button type="button" data-page="statistics"><b>📊</b>Statistik</button>
+   <button type="button" data-page="players"><b>🏌️</b>Spelare</button>
   <button id="adminNavButton" type="button" data-page="admin"><b>⚙</b>Admin</button>
  </nav>
 </div>
@@ -610,6 +635,42 @@ async function toggleWinnerReaction(roundNo,emoji,btn){
 function toggleReact(b){b.classList.toggle('active')}
 
 function normalizeGolfId(v){let d=String(v||'').replace(/\D/g,'').slice(0,9);return d.length>6?d.slice(0,6)+'-'+d.slice(6):d}
+
+function cboStatsNames(x){return Array.isArray(x)&&x.length?x.join(', '):'–'}
+function cboStatsRecord(title,x){
+ if(!x||x.score==null)return `<div class="stats-record"><span class="sub">${title}</span><strong>–</strong></div>`;
+ return `<div class="stats-record"><span class="sub">${title}</span><strong>${x.name} · ${x.score} slag</strong><div class="sub">Omgång ${x.round}${x.date?' · '+x.date:''}${x.course?' · '+x.course:''}</div></div>`;
+}
+async function cboLoadSeasonStats(){
+ const el=document.getElementById('statsBody'),sel=document.getElementById('statsSeason');
+ if(!el||!sel||!window.CBO_SUPABASE_CLIENT)return;
+ const year=Number(sel.value); el.innerHTML='<div class="sub" style="margin-top:10px">Statistik hämtas…</div>';
+ try{
+  const {data:s,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_season_stats',{p_year:year});
+  if(error)throw error;
+  const att=s.attendance||{},wins=s.wins||{},top3=s.top3||{};
+  el.innerHTML=`
+   <div class="stats-summary"><strong>CBO ${year} i siffror</strong><br>${s.official_rounds??0} officiella rundor · ${s.starts??0} starter · ${s.unique_players??0} deltagare · ${Number(s.total_gross||0).toLocaleString('sv-SE')} bruttoslag.</div>
+   <div class="stats-grid">
+    <div class="stats-box"><span class="stats-label">Officiella rundor</span><strong>${s.official_rounds??0}</strong></div>
+    <div class="stats-box"><span class="stats-label">Deltagartillfällen</span><strong>${s.starts??0}</strong></div>
+    <div class="stats-box"><span class="stats-label">Unika deltagare</span><strong>${s.unique_players??0}</strong></div>
+    <div class="stats-box"><span class="stats-label">Bruttoslag totalt</span><strong>${Number(s.total_gross||0).toLocaleString('sv-SE')}</strong></div>
+    <div class="stats-box"><span class="stats-label">Nettoslag totalt</span><strong>${Number(s.total_net||0).toLocaleString('sv-SE')}</strong></div>
+    <div class="stats-box"><span class="stats-label">Snitt brutto</span><strong>${fmt(s.avg_gross)}</strong></div>
+   </div>
+   <h3>Rekord ${year}</h3>
+   ${cboStatsRecord('🏅 Bästa nettoslagsrunda',s.best_net)}
+   ${cboStatsRecord('😬 Sämsta nettoslagsrunda',s.worst_net)}
+   ${cboStatsRecord('🏅 Bästa bruttoslagsrunda',s.best_gross)}
+   ${cboStatsRecord('😬 Sämsta bruttoslagsrunda',s.worst_gross)}
+   <h3>Säsongen</h3>
+   <div class="stats-record"><span class="sub">👟 Högst närvaro</span><strong>${cboStatsNames(att.players)} · ${att.count??0} rundor</strong></div>
+   <div class="stats-record"><span class="sub">🏆 Flest segrar</span><strong>${cboStatsNames(wins.players)} · ${wins.count??0}</strong></div>
+   <div class="stats-record"><span class="sub">🥉 Flest topp 3</span><strong>${cboStatsNames(top3.players)} · ${top3.count??0}</strong></div>`;
+ }catch(e){el.innerHTML=`<div class="notice" style="margin-top:10px">Statistiken kunde inte hämtas: ${e?.message||String(e)}</div>`}
+}
+
 // cboLogin/cboLogout och sessionhantering finns i auth-client.js i CBO 3.3.
 let generatedCode='';
 function codeState(){try{return JSON.parse(localStorage.getItem('cbo32_code_status')||'{}')}catch{return {}}}
@@ -1287,6 +1348,12 @@ function cboStartActivityHeartbeat(){
 }
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible')cboTouchActivity();
+});
+
+
+document.addEventListener('click',e=>{
+ const b=e.target.closest('.nav button[data-page="statistics"]');
+ if(b)setTimeout(cboLoadSeasonStats,40);
 });
 
 window.addEventListener('load',()=>{cboRefreshNotificationUI().catch(()=>{});setTimeout(cboStartActivityHeartbeat,1200);});
