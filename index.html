@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.5.2 – Classic Boys Open</title>
+<title>CBO 4.5.3 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -180,7 +180,11 @@ button{cursor:pointer}
   <div class="login-card">
     <div class="login-brand"><img src="cbo-logo.jpg" alt="CBO"><h1>Classic Boys Open</h1><div class="tagline" style="color:#456f55">Närvaro är det viktigaste, men att vinna är också kul!</div></div>
     <label>Golf-ID</label><input id="loginGolfId" inputmode="numeric" autocomplete="username" placeholder="XXXXXX-XXX" maxlength="10">
-    <label>Personlig CBO-kod</label><input id="loginCode" type="password" autocomplete="current-password" placeholder="8 tecken" maxlength="32">
+    <label>Personlig CBO-kod</label>
+    <div style="position:relative">
+      <input id="loginCode" type="password" autocomplete="current-password" placeholder="8 tecken" maxlength="32" style="padding-right:86px">
+      <button id="loginCodeToggle" type="button" aria-label="Visa CBO-kod" onclick="cboToggleLoginCodeVisibility()" style="position:absolute;right:7px;top:50%;transform:translateY(-50%);width:auto;padding:7px 10px;margin:0;border:1px solid #bca879;border-radius:9px;background:#fffaf0;color:var(--g);font-weight:800">👁 Visa</button>
+    </div>
     <button class="primary" onclick="cboLogin()">Logga in</button>
     <div id="loginError" class="login-error"></div>
     <div class="login-note">Inloggningen använder Golf-ID och personlig CBO-kod mot Supabase. Golf-ID visas inte i appens vanliga spelarvyer.</div>
@@ -207,7 +211,7 @@ button{cursor:pointer}
    <div class="card kansli" id="kansliCard"></div>
    <div class="card"><div class="cardhead"><h2 id="homeTotalTitle">Totalen 2026</h2><span class="badge" onclick="showPage('leaderboard')">Visa alla</span></div><div id="homeTop"></div></div>
    <div class="card" id="currentUserCard"><h2 id="currentUserName">Inloggad spelare</h2><div class="sub" id="currentUserRole">Inloggad</div><div class="metric" id="currentPlayerMetrics"></div></div>
-   <div class="card" id="notificationCard"><div class="cardhead"><h2>Notiser</h2><span class="badge">NYTT</span></div><div class="sub" id="notificationStatus">Kontrollerar om notiser kan aktiveras…</div><button id="notificationButton" class="secondary" type="button" onclick="cboToggleNotifications()">Aktivera notiser</button><div class="sub" style="margin-top:7px">När en ny officiell omgång publiceras får du en notis om vem som vann. På iPhone krävs att CBO är tillagd på hemskärmen.</div></div>
+   <div class="card" id="notificationCard"><div class="cardhead"><h2>Notiser</h2><span class="badge">NYTT</span></div><div class="sub" id="notificationStatus">Kontrollerar om notiser kan aktiveras…</div><button id="notificationButton" class="secondary" type="button" onclick="cboToggleNotifications()">Aktivera notiser</button><div class="sub" style="margin-top:7px">När en ny officiell omgång publiceras får du en notis om vem som vann. På iPhone krävs att CBO är tillagd på hemskärmen. På Android fungerar notiser i en webbläsare som stöder webbnotiser, till exempel Chrome.</div></div>
   </section>
 
   <section id="leaderboard" class="page content">
@@ -701,6 +705,16 @@ async function cboLoadSeasonStats(){
   ${cboStatsRankList(`wins-${year}`,'🏆 Flest segrar',wins,x=>String(x.wins))}
   ${cboStatsRankList(`top3-${year}`,'🥉 Flest topp 3',top3,x=>String(x.top3))}`;
  }catch(e){el.innerHTML=`<div class="notice" style="margin-top:10px">Statistiken kunde inte hämtas: ${e?.message||String(e)}</div>`;}
+}
+
+function cboToggleLoginCodeVisibility(){
+  const input=document.getElementById('loginCode'),btn=document.getElementById('loginCodeToggle');
+  if(!input||!btn)return;
+  const show=input.type==='password';
+  input.type=show?'text':'password';
+  btn.textContent=show?'🙈 Dölj':'👁 Visa';
+  btn.setAttribute('aria-label',show?'Dölj CBO-kod':'Visa CBO-kod');
+  input.focus();
 }
 
 // cboLogin/cboLogout och sessionhantering finns i auth-client.js i CBO 3.3.
