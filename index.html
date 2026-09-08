@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.5.3 – Classic Boys Open</title>
+<title>CBO 4.6.0 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -89,6 +89,24 @@ button{cursor:pointer}
 .champ-row{display:grid;grid-template-columns:52px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #e8dfce}.champ-row:first-child{border-top:0}.champ-year{font-weight:900;color:var(--g)}.champ-note{font-size:11px;color:var(--muted)}
 .hidden{display:none!important}
 @media(min-width:700px){body{padding:22px}.app{border-radius:24px;overflow:hidden;min-height:900px}}
+
+/* CBO 4.6.0 – Klubbhuset */
+.clubhouse-wrap{display:flex;flex-direction:column;gap:10px}
+.clubhouse-feed{display:flex;flex-direction:column;gap:9px;min-height:180px;max-height:58vh;overflow:auto;padding:4px 2px 8px;overscroll-behavior:contain}
+.club-msg{max-width:88%;padding:10px 12px;border:1px solid #d8c8a6;border-radius:15px;background:#fff9ed;box-shadow:0 2px 8px #40351e10}
+.club-msg.mine{align-self:flex-end;background:#e8efe6;border-color:#a9c0b2}
+.club-msg.other{align-self:flex-start}
+.club-msg-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+.club-msg-name{font-size:12px;font-weight:900;color:var(--g)}
+.club-msg-time{font-size:10px;color:var(--muted);white-space:nowrap}
+.club-msg-body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.4}
+.clubhouse-compose{position:sticky;bottom:76px;background:#fbf5e8;border:1px solid #d6c59f;border-radius:16px;padding:9px;box-shadow:0 4px 14px #40351e18}
+.clubhouse-compose textarea{margin:0;resize:none;min-height:50px;max-height:120px}
+.clubhouse-actions{display:flex;gap:8px;margin-top:8px;align-items:center}
+.clubhouse-actions .primary{margin:0;flex:0 0 auto;width:auto;padding:10px 16px}
+.clubhouse-status{flex:1;font-size:11px;color:var(--muted)}
+.clubhouse-empty{padding:28px 12px;text-align:center;color:var(--muted)}
+
 </style>
 
 <style id="cbo21">
@@ -153,7 +171,7 @@ button{cursor:pointer}
 </style>
 
 <style id="cbo45">
-.nav{grid-template-columns:repeat(6,1fr)}
+.nav{grid-template-columns:repeat(7,1fr)}
 .nav button{font-size:9px}
 @media(min-width:700px){.nav button{font-size:10px}}
 .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
@@ -262,6 +280,31 @@ button{cursor:pointer}
     </div>
   </section>
 
+
+  <section id="clubhouse" class="page content">
+    <div class="card">
+      <div class="cardhead">
+        <div>
+          <h2>💬 Klubbhuset</h2>
+          <div class="sub">CBO:s gemensamma snack. Endast inloggade CBO-medlemmar.</div>
+        </div>
+        <span class="badge">LIVE</span>
+      </div>
+      <div class="clubhouse-wrap">
+        <div id="clubhouseFeed" class="clubhouse-feed">
+          <div class="clubhouse-empty">Klubbhuset laddas…</div>
+        </div>
+        <div class="clubhouse-compose">
+          <textarea id="clubhouseInput" maxlength="1000" rows="2" placeholder="Skriv i Klubbhuset…"></textarea>
+          <div class="clubhouse-actions">
+            <div id="clubhouseStatus" class="clubhouse-status">Textchatt · bilder kommer i nästa steg.</div>
+            <button id="clubhouseSend" class="primary" type="button" onclick="cboClubhouseSend()">Skicka</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="admin" class="page content">
    <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
@@ -336,6 +379,7 @@ button{cursor:pointer}
   <button type="button" data-page="leaderboard"><b>🏆</b>Leaderboard</button>
   <button type="button" data-page="rounds"><b>⛳</b>Omgångar</button>
   <button type="button" data-page="statistics"><b>📊</b>Statistik</button>
+  <button type="button" data-page="clubhouse"><b>💬</b>Klubbhuset</button>
    <button type="button" data-page="players"><b>🏌️</b>Spelare</button>
   <button id="adminNavButton" type="button" data-page="admin"><b>⚙</b>Admin</button>
  </nav>
@@ -400,6 +444,7 @@ function showPage(id,btn){
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));
  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b===(btn||document.querySelector(`.nav button[data-page="${id}"]`))));
  if(id==='admin') setupAdmin();
+ if(id==='clubhouse') setTimeout(()=>cboClubhouseOpen(),20);
 }
 function initMainNav(){
  const nav=document.querySelector('.nav');
@@ -1377,6 +1422,85 @@ async function cboSendWinnerPush(roundNo,winner){
   const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_winner',round_no:Number(roundNo),winner_name:winner.name,net:Number(winner.net),gross:winner.gross==null?null:Number(winner.gross),points:Number(winner.points||4)}});
   if(error) throw error; return data;
 }
+
+
+/* === CBO 4.6.0 – Klubbhuset textchatt === */
+let CBO_CLUBHOUSE_CHANNEL=null;
+let CBO_CLUBHOUSE_LOADING=false;
+
+function cboClubhouseEsc(v){
+  return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function cboClubhouseTime(v){
+  try{
+    const d=new Date(v);
+    return d.toLocaleString('sv-SE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  }catch{return ''}
+}
+async function cboClubhouseLoad(){
+  const feed=document.getElementById('clubhouseFeed');
+  if(!feed||CBO_CLUBHOUSE_LOADING||!window.CBO_SUPABASE_CLIENT)return;
+  CBO_CLUBHOUSE_LOADING=true;
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_feed',{p_limit:100});
+    if(error)throw error;
+    const rows=Array.isArray(data)?data:[];
+    const me=window.CBO_CURRENT_PLAYER?.name||'';
+    if(!rows.length){
+      feed.innerHTML='<div class="clubhouse-empty">Klubbhuset är tomt. Skriv första meddelandet! ⛳</div>';
+      return;
+    }
+    feed.innerHTML=rows.map(m=>{
+      const mine=me&&m.player_name===me;
+      return `<div class="club-msg ${mine?'mine':'other'}">
+        <div class="club-msg-head"><span class="club-msg-name">${cboClubhouseEsc(m.player_name||'CBO-spelare')}</span><span class="club-msg-time">${cboClubhouseEsc(cboClubhouseTime(m.created_at))}</span></div>
+        <div class="club-msg-body">${m.deleted_at?'<em>Meddelandet är borttaget.</em>':cboClubhouseEsc(m.body||'')}</div>
+      </div>`;
+    }).join('');
+    feed.scrollTop=feed.scrollHeight;
+  }catch(e){
+    console.error('Klubbhuset kunde inte laddas',e);
+    feed.innerHTML=`<div class="notice">Klubbhuset kunde inte laddas: ${cboClubhouseEsc(e?.message||String(e))}</div>`;
+  }finally{CBO_CLUBHOUSE_LOADING=false}
+}
+async function cboClubhouseSend(){
+  const input=document.getElementById('clubhouseInput');
+  const btn=document.getElementById('clubhouseSend');
+  const status=document.getElementById('clubhouseStatus');
+  const body=(input?.value||'').trim();
+  if(!body)return;
+  if(!window.CBO_SUPABASE_CLIENT){alert('Du behöver vara inloggad i CBO.');return}
+  if(btn)btn.disabled=true;
+  if(status)status.textContent='Skickar…';
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_send',{p_body:body});
+    if(error)throw error;
+    if(input)input.value='';
+    if(status)status.textContent='Skickat.';
+    await cboClubhouseLoad();
+    setTimeout(()=>{if(status)status.textContent='Textchatt · bilder kommer i nästa steg.'},1200);
+  }catch(e){
+    console.error(e);
+    if(status)status.textContent='Kunde inte skicka.';
+    alert(e?.message||String(e));
+  }finally{if(btn)btn.disabled=false}
+}
+async function cboClubhouseOpen(){
+  await cboClubhouseLoad();
+  if(CBO_CLUBHOUSE_CHANNEL||!window.CBO_SUPABASE_CLIENT)return;
+  try{
+    CBO_CLUBHOUSE_CHANNEL=window.CBO_SUPABASE_CLIENT
+      .channel('cbo-clubhouse-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'cbo_clubhouse_messages'},()=>cboClubhouseLoad())
+      .subscribe();
+  }catch(e){console.warn('Klubbhuset realtime kunde inte startas',e)}
+}
+document.addEventListener('keydown',e=>{
+  if(e.target?.id==='clubhouseInput' && e.key==='Enter' && !e.shiftKey){
+    e.preventDefault(); cboClubhouseSend();
+  }
+});
+
 
 let CBO_ACTIVITY_TIMER=null;
 async function cboTouchActivity(){
