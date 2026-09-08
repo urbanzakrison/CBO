@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.2.4 – Classic Boys Open</title>
+<title>CBO 4.3.1 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -155,7 +155,7 @@ button{cursor:pointer}
     <div class="login-note"><strong>CBO 3.6.</strong> Inloggningen använder Golf-ID och personlig CBO-kod mot Supabase. Golf-ID visas inte i appens vanliga spelarvyer.</div>
   </div>
 </div>
-<div id="codeModal" class="modal hidden"><div class="modal-card"><div class="cardhead"><h2>Ny CBO-kod</h2><span class="badge">VISAS EN GÅNG</span></div><div id="codeModalName" class="sub"></div><div id="codeModalValue" class="once-code"></div><button class="primary" onclick="copyGeneratedCode()">Kopiera kod</button><button class="secondary" onclick="closeCodeModal()">Stäng</button><div class="security-note">I produktionsversionen lagras inte koden i klartext i spelarregistret. Den gamla koden upphör att fungera när en ny skapas.</div></div></div>
+<div id="codeModal" class="modal hidden"><div class="modal-card"><div class="cardhead"><h2>Ny CBO-kod</h2><span class="badge">VISAS EN GÅNG</span></div><div id="codeModalName" class="sub"></div><div id="codeModalValue" class="once-code"></div><button class="primary" onclick="copyGeneratedCode()">Kopiera kod</button><button class="secondary" onclick="closeCodeModal()">Stäng</button><div class="security-note">I produktionsversionen lagras inte koden i klartext i spelarregistret. Den gamla koden upphör att fungera direkt när en ny skapas.</div></div></div>
 
 <div class="app">
  <div class="clubstrip">CLASSIC BOYS OPEN · EST. 2011</div>
@@ -607,13 +607,29 @@ function codeState(){try{return JSON.parse(localStorage.getItem('cbo32_code_stat
 function renderAuthPlayers(){
  const el=document.getElementById('authPlayerList'); if(!el)return; const st=codeState();
  const ps=DATA.seasons['2026'].players.slice().sort((a,b)=>a.name.localeCompare(b.name,'sv'));
- el.innerHTML=ps.map(p=>`<div class="auth-admin-row"><div><strong>${p.name}</strong><div class="code-status">${st[p.name]?'Kod skapad i prototypen':'Kod saknas'}</div></div><button class="code-btn" onclick="generatePlayerCode('${p.name.replace(/'/g,"\'")}')">🔑 Ny CBO-kod</button></div>`).join('');
+ el.innerHTML=ps.map(p=>`<div class="auth-admin-row"><div><strong>${p.name}</strong><div class="code-status">${st[p.name]?'Kod skapad':'Kod saknas'}</div></div><button class="code-btn" onclick="generatePlayerCode('${p.name.replace(/'/g,"\'")}')">🔑 Ny CBO-kod</button></div>`).join('');
 }
-function generatePlayerCode(name){
- if(!confirm(`Skapa ny CBO-kod för ${name}? Den gamla koden slutar fungera när produktionskopplingen är aktiv.`))return;
- const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const a=new Uint32Array(8); crypto.getRandomValues(a); generatedCode=Array.from(a,x=>chars[x%chars.length]).join('');
- const st=codeState();st[name]=new Date().toISOString();localStorage.setItem('cbo32_code_status',JSON.stringify(st));
- document.getElementById('codeModalName').textContent=name;document.getElementById('codeModalValue').textContent=generatedCode;document.getElementById('codeModal').classList.remove('hidden');renderAuthPlayers();
+async function generatePlayerCode(name){
+  if(!confirm(`Skapa en NY riktig CBO-kod för ${name}? Den gamla koden slutar fungera direkt.`))return;
+  if(!window.CBO_SUPABASE_CLIENT){alert('Supabase-klienten saknas. Logga in igen och försök på nytt.');return;}
+  document.querySelectorAll('.code-btn').forEach(b=>b.disabled=true);
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('admin-cbo-code',{
+      body:{player_name:name}
+    });
+    if(error) throw new Error(error.message||'Kunde inte skapa CBO-koden.');
+    if(!data?.ok||!data?.code) throw new Error(data?.error||'Servern returnerade ingen CBO-kod.');
+    generatedCode=String(data.code);
+    const st=codeState();st[name]=new Date().toISOString();localStorage.setItem('cbo32_code_status',JSON.stringify(st));
+    document.getElementById('codeModalName').textContent=data.player_name||name;
+    document.getElementById('codeModalValue').textContent=generatedCode;
+    document.getElementById('codeModal').classList.remove('hidden');
+    renderAuthPlayers();
+  }catch(e){
+    alert('Kodskapningen misslyckades: '+(e?.message||String(e)));
+  }finally{
+    document.querySelectorAll('.code-btn').forEach(b=>b.disabled=false);
+  }
 }
 async function copyGeneratedCode(){try{await navigator.clipboard.writeText(generatedCode);alert('Koden är kopierad.')}catch{alert('Markera och kopiera koden manuellt.')}}
 function closeCodeModal(){generatedCode='';document.getElementById('codeModalValue').textContent='';document.getElementById('codeModal').classList.add('hidden')}
