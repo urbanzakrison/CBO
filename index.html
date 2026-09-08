@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.3.3 – Classic Boys Open</title>
+<title>CBO 4.4.0 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -143,6 +143,15 @@ button{cursor:pointer}
 .login-screen.hidden{display:none}.login-card{width:min(430px,100%);background:#fffaf0;border:1px solid #b6924a;border-radius:22px;padding:22px;box-shadow:0 24px 70px #0006}.login-brand{text-align:center;margin-bottom:16px}.login-brand img{width:92px;height:92px;object-fit:contain;background:#fff;border-radius:16px;padding:5px}.login-brand h1{color:#123b2d;margin-top:10px}.login-note{font-size:12px;line-height:1.45;color:#716b60;margin-top:10px}.login-error{display:none;background:#f8d7da;color:#842029;border-radius:10px;padding:9px;margin-top:10px;font-size:12px}.login-error.show{display:block}
 .auth-admin-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px 0;border-top:1px solid #e8dfce}.auth-admin-row:first-child{border-top:0}.code-status{font-size:11px;color:#716b60}.code-btn{border:1px solid #123b2d;background:#fffaf0;color:#123b2d;border-radius:9px;padding:8px 9px;font-weight:800}.once-code{font:900 24px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.09em;text-align:center;background:#f3ecdd;border:1px dashed #b6924a;border-radius:12px;padding:15px;margin:12px 0}.modal{position:fixed;inset:0;z-index:12000;background:#0008;display:grid;place-items:center;padding:18px}.modal.hidden{display:none}.modal-card{width:min(420px,100%);background:#fffaf0;border-radius:18px;padding:18px;box-shadow:0 20px 60px #0008}.security-note{font-size:11px;color:#716b60;line-height:1.45;margin-top:8px}
 </style>
+
+<style id="cbo44">
+.pilot-lines{margin-top:4px;display:flex;flex-direction:column;gap:2px}
+.pilot-line{font-size:11px;color:#716b60;line-height:1.35}
+.pilot-line.online{color:#17643a;font-weight:800}
+.pilot-line.good{color:#315c43;font-weight:700}
+.pilot-line.wait{color:#7b6c51}
+</style>
+
 </head>
 <body>
 <div id="loginScreen" class="login-screen">
@@ -604,10 +613,57 @@ function normalizeGolfId(v){let d=String(v||'').replace(/\D/g,'').slice(0,9);ret
 // cboLogin/cboLogout och sessionhantering finns i auth-client.js i CBO 3.3.
 let generatedCode='';
 function codeState(){try{return JSON.parse(localStorage.getItem('cbo32_code_status')||'{}')}catch{return {}}}
-function renderAuthPlayers(){
- const el=document.getElementById('authPlayerList'); if(!el)return; const st=codeState();
- const ps=DATA.seasons['2026'].players.slice().sort((a,b)=>a.name.localeCompare(b.name,'sv'));
- el.innerHTML=ps.map(p=>`<div class="auth-admin-row"><div><strong>${p.name}</strong><div class="code-status">${st[p.name]?'Kod skapad':'Kod saknas'}</div></div><button class="code-btn" onclick="generatePlayerCode('${p.name.replace(/'/g,"\'")}')">🔑 Ny CBO-kod</button></div>`).join('');
+let CBO_ADMIN_PLAYER_STATUS={};
+
+function cboFmtAdminTime(value){
+  if(!value)return '–';
+  try{
+    return new Intl.DateTimeFormat('sv-SE',{
+      day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'
+    }).format(new Date(value));
+  }catch{return String(value)}
+}
+
+function cboAdminStatusLines(s){
+  if(!s)return `<div class="pilot-lines"><div class="pilot-line wait">Status hämtas…</div></div>`;
+  const activeMs=s.last_active_at ? Date.now()-new Date(s.last_active_at).getTime() : Infinity;
+  const activeNow=activeMs>=0 && activeMs<5*60*1000;
+  const loginLine=activeNow
+    ? `<div class="pilot-line online">🟢 Aktiv nu</div>`
+    : s.has_logged_in
+      ? `<div class="pilot-line good">✅ Inloggad · ${cboFmtAdminTime(s.last_sign_in_at)}</div>`
+      : `<div class="pilot-line wait">⚪ Inte inloggad ännu</div>`;
+  const activeLine=s.last_active_at
+    ? `<div class="pilot-line">Senast aktiv · ${cboFmtAdminTime(s.last_active_at)}</div>`
+    : `<div class="pilot-line">Senast aktiv · –</div>`;
+  const notifyLine=s.notifications_enabled
+    ? `<div class="pilot-line">🔔 Notiser aktiverade${Number(s.notification_devices||0)>1?` · ${s.notification_devices} enheter`:''}</div>`
+    : `<div class="pilot-line">🔕 Notiser ej aktiverade</div>`;
+  const codeLine=s.code_created?'Kod skapad':'Kod saknas';
+  return `<div class="code-status">${codeLine}</div><div class="pilot-lines">${loginLine}${activeLine}${notifyLine}</div>`;
+}
+
+async function cboLoadAdminPlayerStatus(){
+  if(!window.CBO_SUPABASE_CLIENT)return;
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_admin_player_status');
+    if(error)throw error;
+    CBO_ADMIN_PLAYER_STATUS={};
+    (Array.isArray(data)?data:[]).forEach(x=>CBO_ADMIN_PLAYER_STATUS[x.name]=x);
+    renderAuthPlayers(false);
+  }catch(e){
+    console.warn('Pilotstatus kunde inte hämtas',e);
+  }
+}
+
+function renderAuthPlayers(loadStatus=true){
+  const el=document.getElementById('authPlayerList'); if(!el)return;
+  const ps=DATA.seasons['2026'].players.slice().sort((a,b)=>a.name.localeCompare(b.name,'sv'));
+  el.innerHTML=ps.map(p=>{
+    const s=CBO_ADMIN_PLAYER_STATUS[p.name];
+    return `<div class="auth-admin-row"><div><strong>${p.name}</strong>${cboAdminStatusLines(s)}</div><button class="code-btn" onclick="generatePlayerCode('${p.name.replace(/'/g,"\\'")}')">🔑 Ny CBO-kod</button></div>`;
+  }).join('');
+  if(loadStatus)cboLoadAdminPlayerStatus();
 }
 async function generatePlayerCode(name){
   if(!confirm(`Skapa en NY riktig CBO-kod för ${name}? Den gamla koden slutar fungera direkt.`))return;
@@ -641,6 +697,7 @@ async function generatePlayerCode(name){
     document.getElementById('codeModalValue').textContent=generatedCode;
     document.getElementById('codeModal').classList.remove('hidden');
     renderAuthPlayers();
+    cboLoadAdminPlayerStatus();
   }catch(e){
     alert('Kodskapningen misslyckades: '+(e?.message||String(e)));
   }finally{
@@ -1213,7 +1270,26 @@ async function cboSendWinnerPush(roundNo,winner){
   const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_winner',round_no:Number(roundNo),winner_name:winner.name,net:Number(winner.net),gross:winner.gross==null?null:Number(winner.gross),points:Number(winner.points||4)}});
   if(error) throw error; return data;
 }
-window.addEventListener('load',()=>{cboRefreshNotificationUI().catch(()=>{});});
+
+let CBO_ACTIVITY_TIMER=null;
+async function cboTouchActivity(){
+  if(document.visibilityState==='hidden'||!window.CBO_SUPABASE_CLIENT)return;
+  try{
+    const {data:{session}}=await window.CBO_SUPABASE_CLIENT.auth.getSession();
+    if(!session?.access_token)return;
+    await window.CBO_SUPABASE_CLIENT.rpc('cbo_touch_activity');
+  }catch(e){console.warn('CBO activity touch misslyckades',e)}
+}
+function cboStartActivityHeartbeat(){
+  cboTouchActivity();
+  if(CBO_ACTIVITY_TIMER)clearInterval(CBO_ACTIVITY_TIMER);
+  CBO_ACTIVITY_TIMER=setInterval(()=>cboTouchActivity(),2*60*1000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible')cboTouchActivity();
+});
+
+window.addEventListener('load',()=>{cboRefreshNotificationUI().catch(()=>{});setTimeout(cboStartActivityHeartbeat,1200);});
 </script>
 
 </body></html>
