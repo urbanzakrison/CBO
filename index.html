@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.3.2 – Classic Boys Open</title>
+<title>CBO 4.3.3 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -614,8 +614,12 @@ async function generatePlayerCode(name){
   if(!window.CBO_SUPABASE_CLIENT){alert('Supabase-klienten saknas. Logga in igen och försök på nytt.');return;}
   document.querySelectorAll('.code-btn').forEach(b=>b.disabled=true);
   try{
+    const {data:{session},error:sessionError}=await window.CBO_SUPABASE_CLIENT.auth.getSession();
+    if(sessionError) throw sessionError;
+    if(!session?.access_token) throw new Error('Din CBO-session saknas. Logga ut och in igen.');
     const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('admin-cbo-code',{
-      body:{player_name:name}
+      body:{player_name:name},
+      headers:{Authorization:`Bearer ${session.access_token}`}
     });
     if(error){
       let detail='';
