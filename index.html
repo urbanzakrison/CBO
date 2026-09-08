@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.5.1 – Classic Boys Open</title>
+<title>CBO 4.5.2 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -183,10 +183,10 @@ button{cursor:pointer}
     <label>Personlig CBO-kod</label><input id="loginCode" type="password" autocomplete="current-password" placeholder="8 tecken" maxlength="32">
     <button class="primary" onclick="cboLogin()">Logga in</button>
     <div id="loginError" class="login-error"></div>
-    <div class="login-note"><strong>CBO 3.6.</strong> Inloggningen använder Golf-ID och personlig CBO-kod mot Supabase. Golf-ID visas inte i appens vanliga spelarvyer.</div>
+    <div class="login-note">Inloggningen använder Golf-ID och personlig CBO-kod mot Supabase. Golf-ID visas inte i appens vanliga spelarvyer.</div>
   </div>
 </div>
-<div id="codeModal" class="modal hidden"><div class="modal-card"><div class="cardhead"><h2>Ny CBO-kod</h2><span class="badge">VISAS EN GÅNG</span></div><div id="codeModalName" class="sub"></div><div id="codeModalValue" class="once-code"></div><button class="primary" onclick="copyGeneratedCode()">Kopiera kod</button><button class="secondary" onclick="closeCodeModal()">Stäng</button><div class="security-note">I produktionsversionen lagras inte koden i klartext i spelarregistret. Den gamla koden upphör att fungera direkt när en ny skapas.</div></div></div>
+<div id="codeModal" class="modal hidden"><div class="modal-card"><div class="cardhead"><h2>Ny CBO-kod</h2><span class="badge">VISAS EN GÅNG</span></div><div id="codeModalName" class="sub"></div><div id="codeModalValue" class="once-code"></div><button class="primary" onclick="copyGeneratedCode()">Kopiera kod</button><button class="secondary" onclick="closeCodeModal()">Stäng</button><div class="security-note">Koden lagras inte i klartext i spelarregistret. Den gamla koden upphör att fungera direkt när en ny skapas.</div></div></div>
 
 <div class="app">
  <div class="clubstrip">CLASSIC BOYS OPEN · EST. 2011</div>
@@ -212,7 +212,7 @@ button{cursor:pointer}
 
   <section id="leaderboard" class="page content">
    <div class="card">
-    <div class="cardhead"><h2>Leaderboard</h2><div style="display:flex;gap:8px;align-items:center"><span class="badge" id="leaderSource">PROTOTYPDATA</span><span class="badge" id="seasonBadge">2026 PÅGÅENDE</span></div></div>
+    <div class="cardhead"><h2>Leaderboard</h2><div style="display:flex;gap:8px;align-items:center"><span class="badge" id="leaderSource">SUPABASE</span><span class="badge" id="seasonBadge">2026 PÅGÅENDE</span></div></div>
     <label>Säsong</label><select id="seasonSelect" onchange="changeSeason(this.value)"><option>2026</option><option>2025</option><option>2024</option><option>2023</option><option>2022</option><option>2021</option></select>
     <div id="seasonChampion"></div>
     <div class="tabs">
@@ -259,9 +259,9 @@ button{cursor:pointer}
   </section>
 
   <section id="admin" class="page content">
-   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN · 4.2.8</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
-    <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN · 4.1.9</span></div>
+    <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
     <label>Datum <span aria-hidden="true">*</span></label><input id="newDate" type="date" required aria-required="true" onchange="cboOnRoundDateChanged()" oninput="cboOnRoundDateChanged()">
     <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
@@ -323,7 +323,7 @@ button{cursor:pointer}
    <div class="card hidden" id="previewCard"></div>
    <div class="card" id="adminPushCard"><div class="cardhead"><h2>Skicka CBO-notis</h2><span class="badge">ADMIN</span></div><div class="sub">Skicka en kort påminnelse eller information till alla enheter som har aktiverat CBO-notiser.</div><label>Rubrik</label><input id="adminPushTitle" maxlength="60" value="⛳ CBO" placeholder="⛳ CBO"><label>Meddelande</label><textarea id="adminPushMessage" rows="3" maxlength="180" placeholder="Till exempel: Glöm inte boka starttid till finalen."></textarea><div id="adminPushStatus" class="sub" style="margin-top:8px"></div><button id="adminPushButton" class="primary" type="button" onclick="cboSendAdminPush()">Skicka notis till alla</button></div>
    <div class="card"><div class="cardhead"><h2>Spelarnas inloggning</h2><span class="badge">ADMIN</span></div><div class="sub">Golf-ID är spelarens identifierare. Här skapar du en ny personlig CBO-kod. Koden visas bara en gång.</div><div id="authPlayerList" style="margin-top:10px"></div></div>
-   <div class="card"><h2>Prototypdata</h2><div class="sub">Nya omgångar sparas lokalt i den här webbläsaren. Originaldata från CBO 2026 ligger orörd. I produktionsversionen flyttas detta till gemensam databas och Golf-ID + personlig CBO-kod.</div><button class="secondary" onclick="resetPrototype()">Återställ lokala testomgångar</button></div>
+   
   </section>
  </main>
 
@@ -585,11 +585,10 @@ async function saveDraft(){
    if(btn){btn.disabled=false;btn.textContent='Publicera omgången'}
  }
 }
-function resetPrototype(){if(confirm('Återställa alla lokalt skapade testomgångar?')){localStorage.removeItem('cbo20rounds');localStorage.removeItem('cbo20reports');renderAll();setupAdmin();}}
 function toggleManual(){document.getElementById('manualWrap').classList.toggle('collapsed')}
 function loadGameBookImage(e){
  const f=e.target.files&&e.target.files[0];if(!f)return;const img=document.getElementById('gamebookPreview'),st=document.getElementById('gamebookStatus');
- img.src=URL.createObjectURL(f);img.classList.remove('hidden');st.classList.remove('hidden');st.innerHTML='<strong>GameBook-bild redo för granskning.</strong><br>Bilden ligger kvar som referens. Öppna granskningsfältet nedan och kontrollera spelare, SHCP, netto och brutto före publicering. Automatisk bildtolkning kopplas på när appen får serversida.';document.getElementById('manualWrap').classList.remove('collapsed');
+ img.src=URL.createObjectURL(f);img.classList.remove('hidden');st.classList.remove('hidden');st.innerHTML='<strong>GameBook-bild redo för granskning.</strong><br>Bilden ligger kvar som referens. Öppna granskningsfältet nedan och kontrollera spelare, SHCP, netto och brutto före publicering. Använd AI-importen och kontrollera resultatet före publicering.';document.getElementById('manualWrap').classList.remove('collapsed');
 }
 function plainTextFromHtml(value){
  const el=document.createElement('div');
