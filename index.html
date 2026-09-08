@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#123b2d">
-<title>CBO 4.3.1 – Classic Boys Open</title>
+<title>CBO 4.3.2 – Classic Boys Open</title>
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
@@ -617,7 +617,19 @@ async function generatePlayerCode(name){
     const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('admin-cbo-code',{
       body:{player_name:name}
     });
-    if(error) throw new Error(error.message||'Kunde inte skapa CBO-koden.');
+    if(error){
+      let detail='';
+      try{
+        const ctx=error.context;
+        if(ctx && typeof ctx.json==='function'){
+          const payload=await ctx.json();
+          detail=payload?.error||payload?.message||JSON.stringify(payload);
+        }else if(ctx && typeof ctx.text==='function'){
+          detail=await ctx.text();
+        }
+      }catch(_){}
+      throw new Error(detail || error.message || 'Kunde inte skapa CBO-koden.');
+    }
     if(!data?.ok||!data?.code) throw new Error(data?.error||'Servern returnerade ingen CBO-kod.');
     generatedCode=String(data.code);
     const st=codeState();st[name]=new Date().toISOString();localStorage.setItem('cbo32_code_status',JSON.stringify(st));
