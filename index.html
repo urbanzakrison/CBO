@@ -116,6 +116,18 @@ button{cursor:pointer}
 
 </style>
 
+<style id="cbo462-unread">
+.nav button{position:relative}
+.nav-unread-badge{
+ position:absolute;top:1px;right:3px;min-width:18px;height:18px;padding:0 5px;
+ border-radius:999px;background:#b3261e;color:#fff;border:2px solid #fbf5e8;
+ display:flex;align-items:center;justify-content:center;
+ font:900 10px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+ box-shadow:0 2px 6px #0003;z-index:2
+}
+.nav-unread-badge.hidden{display:none!important}
+</style>
+
 <style id="cbo21">
 .green-photo{
  min-height:210px;padding:0!important;
@@ -419,7 +431,7 @@ button{cursor:pointer}
   <button type="button" data-page="leaderboard"><b>🏆</b>Leaderboard</button>
   <button type="button" data-page="rounds"><b>⛳</b>Omgångar</button>
   <button type="button" data-page="statistics"><b>📊</b>Statistik</button>
-  <button type="button" data-page="clubhouse"><b>💬</b>Klubbhuset</button>
+  <button type="button" data-page="clubhouse"><b>💬</b><span id="clubhouseUnreadBadge" class="nav-unread-badge hidden" aria-label="Olästa i Klubbhuset"></span>Klubbhuset</button>
    <button type="button" data-page="players"><b>🏌️</b>Spelare</button>
   <button id="adminNavButton" type="button" data-page="admin"><b>⚙</b>Admin</button>
  </nav>
@@ -1469,6 +1481,120 @@ let CBO_CLUBHOUSE_CHANNEL=null;
 let CBO_CLUBHOUSE_REACTIONS_CHANNEL=null;
 let CBO_CLUBHOUSE_LOADING=false;
 let CBO_CLUBHOUSE_REACTIONS={};
+let CBO_CLUBHOUSE_LAST_ROWS=[];
+const CBO_UNREAD={clubhouse:0,home:0};
+
+function cboTotalUnread(){
+  return Object.values(CBO_UNREAD).reduce((sum,n)=>sum+Number(n||0),0);
+}
+
+function cboRenderUnread(){
+  const badge=document.getElementById('clubhouseUnreadBadge');
+  const count=Math.max(0,Number(CBO_UNREAD.clubhouse||0));
+  if(badge){
+    badge.textContent=count>99?'99+':String(count);
+    badge.classList.toggle('hidden',count===0);
+    badge.setAttribute('aria-label',count===1?'1 oläst i Klubbhuset':`${count} olästa i Klubbhuset`);
+  }
+  window.CBO_TOTAL_UNREAD=cboTotalUnread();
+}
+
+async function cboClubhouseUnreadContext(){
+  if(!window.CBO_SUPABASE_CLIENT)return null;
+  const {data:{session},error}=await window.CBO_SUPABASE_CLIENT.auth.getSession();
+  if(error||!session?.user?.id)return null;
+  return {
+    userId:session.user.id,
+    key:`cbo-unread-clubhouse-${session.user.id}`
+  };
+}
+
+function cboClubhouseLatestCreatedAt(rows){
+  return (Array.isArray(rows)?rows:[])
+    .filter(r=>r?.created_at)
+    .reduce((latest,r)=>{
+      const t=new Date(r.created_at).getTime();
+      return Number.isFinite(t)&&t>latest?t:latest;
+    },0);
+}
+
+async function cboClubhouseSyncUnread(rows,{markRead=false}={}){
+  const ctx=await cboClubhouseUnreadContext();
+  if(!ctx)return;
+
+  const list=Array.isArray(rows)?rows:[];
+  CBO_CLUBHOUSE_LAST_ROWS=list;
+
+  const latestMs=cboClubhouseLatestCreatedAt(list);
+  const stored=localStorage.getItem(ctx.key);
+
+  // Första gången 4.6.2 körs skapas en baslinje utan att gamla meddelanden blir "olästa".
+  if(stored===null){
+    if(latestMs)localStorage.setItem(ctx.key,new Date(latestMs).toISOString());
+    CBO_UNREAD.clubhouse=0;
+    cboRenderUnread();
+    return;
+  }
+
+  if(markRead || document.getElementById('clubhouse')?.classList.contains('active')){
+    if(latestMs)localStorage.setItem(ctx.key,new Date(latestMs).toISOString());
+    CBO_UNREAD.clubhouse=0;
+    cboRenderUnread();
+    return;
+  }
+
+  const lastReadMs=new Date(stored).getTime();
+  const me=window.CBO_CURRENT_PLAYER?.name||'';
+  CBO_UNREAD.clubhouse=list.filter(m=>{
+    if(!m||m.deleted_at||!m.created_at)return false;
+    if(me&&m.player_name===me)return false;
+    const createdMs=new Date(m.created_at).getTime();
+    return Number.isFinite(createdMs) && createdMs>lastReadMs;
+  }).length;
+  cboRenderUnread();
+}
+
+async function cboClubhouseRefreshUnread(){
+  if(!window.CBO_SUPABASE_CLIENT)return false;
+  try{
+    const {data:{session}}=await window.CBO_SUPABASE_CLIENT.auth.getSession();
+    if(!session?.user?.id)return false;
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_feed',{p_limit:100});
+    if(error)throw error;
+    await cboClubhouseSyncUnread(Array.isArray(data)?data:[]);
+    return true;
+  }catch(e){
+    console.warn('Kunde inte uppdatera Klubbhusets olästa status',e);
+    return false;
+  }
+}
+
+async function cboClubhouseHandleRealtimeMessage(){
+  if(document.getElementById('clubhouse')?.classList.contains('active')){
+    await cboClubhouseLoad();
+  }else{
+    await cboClubhouseRefreshUnread();
+  }
+}
+
+async function cboClubhouseStartMessageChannel(){
+  if(CBO_CLUBHOUSE_CHANNEL||!window.CBO_SUPABASE_CLIENT)return;
+  try{
+    CBO_CLUBHOUSE_CHANNEL=window.CBO_SUPABASE_CLIENT
+      .channel('cbo-clubhouse-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'cbo_clubhouse_messages'},()=>cboClubhouseHandleRealtimeMessage())
+      .subscribe();
+  }catch(e){
+    CBO_CLUBHOUSE_CHANNEL=null;
+    console.warn('Klubbhuset realtime kunde inte startas',e);
+  }
+}
+
+async function cboClubhouseInitUnread(){
+  const ready=await cboClubhouseRefreshUnread();
+  if(ready)await cboClubhouseStartMessageChannel();
+  return ready;
+}
 const CBO_CLUBHOUSE_REACTION_CHOICES=['👍','❤️','😂','👏','🔥','⛳','🏆','🍻','👌','🤣','😮','😢','😡'];
 
 function cboClubhouseReactionRowsByMessage(rows){
@@ -1572,6 +1698,7 @@ async function cboClubhouseLoad(){
     if(error)throw error;
     const rows=Array.isArray(data)?data:[];
     const me=window.CBO_CURRENT_PLAYER?.name||'';
+    await cboClubhouseSyncUnread(rows);
     if(!rows.length){
       feed.innerHTML='<div class="clubhouse-empty">Klubbhuset är tomt. Skriv första meddelandet! ⛳</div>';
       return;
@@ -1855,16 +1982,10 @@ async function cboClubhouseSend(){
 }
 async function cboClubhouseOpen(){
   await cboClubhouseLoad();
+  await cboClubhouseSyncUnread(CBO_CLUBHOUSE_LAST_ROWS,{markRead:true});
   if(!window.CBO_SUPABASE_CLIENT)return;
 
-  if(!CBO_CLUBHOUSE_CHANNEL){
-    try{
-      CBO_CLUBHOUSE_CHANNEL=window.CBO_SUPABASE_CLIENT
-        .channel('cbo-clubhouse-live')
-        .on('postgres_changes',{event:'*',schema:'public',table:'cbo_clubhouse_messages'},()=>cboClubhouseLoad())
-        .subscribe();
-    }catch(e){console.warn('Klubbhuset realtime kunde inte startas',e)}
-  }
+  await cboClubhouseStartMessageChannel();
 
   if(!CBO_CLUBHOUSE_REACTIONS_CHANNEL){
     try{
@@ -1897,7 +2018,10 @@ function cboStartActivityHeartbeat(){
   CBO_ACTIVITY_TIMER=setInterval(()=>cboTouchActivity(),2*60*1000);
 }
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible')cboTouchActivity();
+  if(document.visibilityState==='visible'){
+    cboTouchActivity();
+    cboClubhouseInitUnread().catch(()=>{});
+  }
 });
 
 
@@ -1906,7 +2030,12 @@ document.addEventListener('click',e=>{
  if(b)setTimeout(cboLoadSeasonStats,40);
 });
 
-window.addEventListener('load',()=>{cboRefreshNotificationUI().catch(()=>{});setTimeout(cboStartActivityHeartbeat,1200);});
+window.addEventListener('load',()=>{
+  cboRefreshNotificationUI().catch(()=>{});
+  setTimeout(cboStartActivityHeartbeat,1200);
+  // Auth kan bli klar strax efter sidladdning. Några lätta försök räcker och ändrar ingen auth-logik.
+  [1400,3500,8000].forEach(ms=>setTimeout(()=>cboClubhouseInitUnread().catch(()=>{}),ms));
+});
 </script>
 
 </body></html>
