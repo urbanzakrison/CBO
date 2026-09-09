@@ -1470,6 +1470,16 @@ function cboClubhouseTime(v){
     return d.toLocaleString('sv-SE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   }catch{return ''}
 }
+async function cboClubhouseSignedImageUrl(imagePath){
+  if(!imagePath||!window.CBO_SUPABASE_CLIENT)return null;
+  const {data,error}=await window.CBO_SUPABASE_CLIENT
+    .storage
+    .from('cbo-clubhouse')
+    .createSignedUrl(imagePath,60*60);
+  if(error)throw error;
+  return data?.signedUrl||null;
+}
+
 async function cboClubhouseLoad(){
   const feed=document.getElementById('clubhouseFeed');
   if(!feed||CBO_CLUBHOUSE_LOADING||!window.CBO_SUPABASE_CLIENT)return;
@@ -1483,11 +1493,32 @@ async function cboClubhouseLoad(){
       feed.innerHTML='<div class="clubhouse-empty">Klubbhuset är tomt. Skriv första meddelandet! ⛳</div>';
       return;
     }
-    feed.innerHTML=rows.map(m=>{
+
+    const signedUrls=await Promise.all(rows.map(async m=>{
+      if(m.deleted_at||!m.image_path)return null;
+      try{
+        return await cboClubhouseSignedImageUrl(m.image_path);
+      }catch(e){
+        console.warn('Kunde inte skapa bildlänk för Klubbhuset',e);
+        return null;
+      }
+    }));
+
+    feed.innerHTML=rows.map((m,i)=>{
       const mine=me&&m.player_name===me;
+      const deleted=!!m.deleted_at;
+      const body=deleted
+        ? '<em>Meddelandet är borttaget.</em>'
+        : cboClubhouseEsc(m.body||'');
+      const imageUrl=!deleted?signedUrls[i]:null;
+      const imageHtml=imageUrl
+        ? `<img src="${cboClubhouseEsc(imageUrl)}" alt="Bild i Klubbhuset" loading="lazy" style="display:block;width:100%;max-height:420px;object-fit:contain;border-radius:12px;margin-top:${body?'8px':'0'};background:#14291f">`
+        : '';
+
       return `<div class="club-msg ${mine?'mine':'other'}">
         <div class="club-msg-head"><span class="club-msg-name">${cboClubhouseEsc(m.player_name||'CBO-spelare')}</span><span class="club-msg-time">${cboClubhouseEsc(cboClubhouseTime(m.created_at))}</span></div>
-        <div class="club-msg-body">${m.deleted_at?'<em>Meddelandet är borttaget.</em>':cboClubhouseEsc(m.body||'')}</div>
+        ${body?`<div class="club-msg-body">${body}</div>`:''}
+        ${imageHtml}
       </div>`;
     }).join('');
     feed.scrollTop=feed.scrollHeight;
@@ -1633,22 +1664,87 @@ async function cboClubhouseSend(){
   const btn=document.getElementById('clubhouseSend');
   const status=document.getElementById('clubhouseStatus');
   const body=(input?.value||'').trim();
-  if(!body)return;
+  const imageFile=CBO_CLUBHOUSE_IMAGE_FILE;
+
+  if(!body&&!imageFile)return;
   if(!window.CBO_SUPABASE_CLIENT){alert('Du behöver vara inloggad i CBO.');return}
+
   if(btn)btn.disabled=true;
-  if(status)status.textContent='Skickar…';
+  let uploadedPath=null;
+
   try{
-    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_send',{p_body:body});
-    if(error)throw error;
+    if(imageFile){
+      if(status)status.textContent='Laddar upp bild…';
+
+      const {data:{session},error:sessionError}=await window.CBO_SUPABASE_CLIENT.auth.getSession();
+      if(sessionError)throw sessionError;
+      const authUserId=session?.user?.id;
+      if(!authUserId)throw new Error('Du behöver vara inloggad i CBO.');
+
+      const fileId=(window.crypto&&typeof window.crypto.randomUUID==='function')
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      uploadedPath=`${authUserId}/${fileId}.jpg`;
+
+      const {error:uploadError}=await window.CBO_SUPABASE_CLIENT
+        .storage
+        .from('cbo-clubhouse')
+        .upload(uploadedPath,imageFile,{
+          contentType:'image/jpeg',
+          cacheControl:'3600',
+          upsert:false
+        });
+
+      if(uploadError)throw uploadError;
+
+      if(status)status.textContent='Publicerar bild…';
+
+      const {error:rpcError}=await window.CBO_SUPABASE_CLIENT.rpc(
+        'cbo_clubhouse_send_image',
+        {p_body:body,p_image_path:uploadedPath}
+      );
+
+      if(rpcError)throw rpcError;
+    }else{
+      if(status)status.textContent='Skickar…';
+
+      const {error}=await window.CBO_SUPABASE_CLIENT.rpc(
+        'cbo_clubhouse_send',
+        {p_body:body}
+      );
+
+      if(error)throw error;
+    }
+
     if(input)input.value='';
+    if(imageFile)cboClubhouseClearImage();
+
     if(status)status.textContent='Skickat.';
     await cboClubhouseLoad();
-    setTimeout(()=>{if(status)status.textContent='Textchatt · bilder kommer i nästa steg.'},1200);
+
+    setTimeout(()=>{
+      if(status)status.textContent='Text eller bild.';
+    },1200);
   }catch(e){
     console.error(e);
+
+    if(uploadedPath){
+      try{
+        await window.CBO_SUPABASE_CLIENT
+          .storage
+          .from('cbo-clubhouse')
+          .remove([uploadedPath]);
+      }catch(cleanupError){
+        console.warn('Kunde inte städa bort misslyckad bild',cleanupError);
+      }
+    }
+
     if(status)status.textContent='Kunde inte skicka.';
     alert(e?.message||String(e));
-  }finally{if(btn)btn.disabled=false}
+  }finally{
+    if(btn)btn.disabled=false;
+  }
 }
 async function cboClubhouseOpen(){
   await cboClubhouseLoad();
