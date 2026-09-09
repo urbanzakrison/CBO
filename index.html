@@ -128,6 +128,23 @@ button{cursor:pointer}
 .nav-unread-badge.hidden{display:none!important}
 </style>
 
+<style id="cbo463-activity">
+.activity-list{display:flex;flex-direction:column;gap:9px;margin-top:10px}
+.activity-item{
+ display:flex;gap:10px;align-items:flex-start;padding:10px 11px;
+ border:1px solid #e4ddcf;border-radius:12px;background:#fffdf8
+}
+.activity-icon{
+ width:34px;height:34px;flex:0 0 34px;border-radius:50%;
+ display:flex;align-items:center;justify-content:center;background:#f1eadc;font-size:17px
+}
+.activity-main{min-width:0;flex:1}
+.activity-title{font-weight:850;line-height:1.2}
+.activity-meta{font-size:11px;color:#706b62;margin-top:3px;line-height:1.35}
+.activity-text{font-size:13px;margin-top:4px;line-height:1.35;overflow-wrap:anywhere}
+.activity-empty{padding:10px 0;color:#706b62;font-size:13px}
+</style>
+
 <style id="cbo21">
 .green-photo{
  min-height:210px;padding:0!important;
@@ -246,6 +263,11 @@ button{cursor:pointer}
   <section id="home" class="page active content">
    <div class="card" id="latestCard"></div>
    <div class="card kansli" id="kansliCard"></div>
+   <div class="card" id="homeActivityCard">
+    <div class="cardhead"><h2>Senaste aktivitet</h2><span class="badge" id="homeActivityBadge">CBO</span></div>
+    <div class="sub">Senaste publiceringen och de senaste inläggen från Klubbhuset.</div>
+    <div id="homeActivityList" class="activity-list"><div class="activity-empty">Laddar aktivitet…</div></div>
+   </div>
    <div class="card"><div class="cardhead"><h2 id="homeTotalTitle">Totalen 2026</h2><span class="badge" onclick="showPage('leaderboard')">Visa alla</span></div><div id="homeTop"></div></div>
    <div class="card" id="currentUserCard"><h2 id="currentUserName">Inloggad spelare</h2><div class="sub" id="currentUserRole">Inloggad</div><div class="metric" id="currentPlayerMetrics"></div></div>
    <div class="card" id="notificationCard"><div class="cardhead"><h2>Notiser</h2><span class="badge">NYTT</span></div><div class="sub" id="notificationStatus">Kontrollerar om notiser kan aktiveras…</div><button id="notificationButton" class="secondary" type="button" onclick="cboToggleNotifications()">Aktivera notiser</button><div class="sub" style="margin-top:7px">När en ny officiell omgång publiceras får du en notis om vem som vann. På iPhone krävs att CBO är tillagd på hemskärmen. På Android fungerar notiser i en webbläsare som stöder webbnotiser, till exempel Chrome.</div></div>
@@ -427,7 +449,7 @@ button{cursor:pointer}
  </main>
 
  <nav class="nav" aria-label="Huvudmeny">
-  <button class="active" type="button" data-page="home"><b>🏌️</b>Hem</button>
+  <button class="active" type="button" data-page="home"><b>🏌️</b><span id="homeUnreadBadge" class="nav-unread-badge hidden" aria-label="Olästa på Hem"></span>Hem</button>
   <button type="button" data-page="leaderboard"><b>🏆</b>Leaderboard</button>
   <button type="button" data-page="rounds"><b>⛳</b>Omgångar</button>
   <button type="button" data-page="statistics"><b>📊</b>Statistik</button>
@@ -497,6 +519,7 @@ function showPage(id,btn){
  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b===(btn||document.querySelector(`.nav button[data-page="${id}"]`))));
  if(id==='admin') setupAdmin();
  if(id==='clubhouse') setTimeout(()=>cboClubhouseOpen(),20);
+ if(id==='home') setTimeout(()=>cboHomeMarkRead(),20);
 }
 function initMainNav(){
  const nav=document.querySelector('.nav');
@@ -578,6 +601,8 @@ function renderHome(){
  if(metrics){metrics.innerHTML=u?`<div><span class="sub">Totalen</span><strong>${u.points}</strong></div><div><span class="sub">Närvaro</span><strong>${u.attendance}</strong></div><div><span class="sub">Netto</span><strong>${fmt(u.net)}</strong></div><div><span class="sub">Effektivitet</span><strong>${fmt(u.eff)}</strong></div>`:`<div class="sub" style="grid-column:1/-1">${currentName?'Live-statistik hämtas…':'Logga in för att se din statistik.'}</div>`;}
  selectedSeason=selectedBefore;
  loadWinnerReactions(latest.round);
+ cboRenderHomeActivity();
+ cboHomeSyncUnread().catch(()=>{});
 }
 function renderRounds(){
  const rr=rounds();document.getElementById('roundsTitle').textContent='Omgångar '+selectedSeason;document.getElementById('roundCountBadge').textContent=rr.length+' OMGÅNGAR';
@@ -1489,14 +1514,167 @@ function cboTotalUnread(){
 }
 
 function cboRenderUnread(){
-  const badge=document.getElementById('clubhouseUnreadBadge');
-  const count=Math.max(0,Number(CBO_UNREAD.clubhouse||0));
-  if(badge){
-    badge.textContent=count>99?'99+':String(count);
-    badge.classList.toggle('hidden',count===0);
-    badge.setAttribute('aria-label',count===1?'1 oläst i Klubbhuset':`${count} olästa i Klubbhuset`);
+  const clubhouseBadge=document.getElementById('clubhouseUnreadBadge');
+  const clubhouseCount=Math.max(0,Number(CBO_UNREAD.clubhouse||0));
+  if(clubhouseBadge){
+    clubhouseBadge.textContent=clubhouseCount>99?'99+':String(clubhouseCount);
+    clubhouseBadge.classList.toggle('hidden',clubhouseCount===0);
+    clubhouseBadge.setAttribute('aria-label',clubhouseCount===1?'1 oläst i Klubbhuset':`${clubhouseCount} olästa i Klubbhuset`);
   }
+
+  const homeBadge=document.getElementById('homeUnreadBadge');
+  const homeCount=Math.max(0,Number(CBO_UNREAD.home||0));
+  if(homeBadge){
+    homeBadge.textContent=homeCount>99?'99+':String(homeCount);
+    homeBadge.classList.toggle('hidden',homeCount===0);
+    homeBadge.setAttribute('aria-label',homeCount===1?'1 ny aktivitet på Hem':`${homeCount} nya aktiviteter på Hem`);
+  }
+
   window.CBO_TOTAL_UNREAD=cboTotalUnread();
+}
+
+
+function cboActivityEsc(value){
+  return String(value??'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function cboActivityTime(value){
+  if(!value)return '';
+  try{
+    return new Intl.DateTimeFormat('sv-SE',{
+      day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'
+    }).format(new Date(value));
+  }catch{return String(value)}
+}
+
+function cboLatestHomeRound(){
+  try{
+    const keep=selectedSeason;
+    selectedSeason='2026';
+    const list=rounds();
+    const latest=Array.isArray(list)&&list.length?list[0]:null;
+    selectedSeason=keep;
+    return latest;
+  }catch(e){
+    return null;
+  }
+}
+
+function cboHomeRoundKey(round){
+  if(!round)return '';
+  return `${round.round||''}|${round.date||''}|${round.course||''}`;
+}
+
+async function cboHomeUnreadContext(){
+  if(!window.CBO_SUPABASE_CLIENT)return null;
+  const {data:{session},error}=await window.CBO_SUPABASE_CLIENT.auth.getSession();
+  if(error||!session?.user?.id)return null;
+  return {
+    userId:session.user.id,
+    key:`cbo-unread-home-${session.user.id}`
+  };
+}
+
+async function cboHomeSyncUnread({markRead=false}={}){
+  const ctx=await cboHomeUnreadContext();
+  if(!ctx)return;
+
+  const latest=cboLatestHomeRound();
+  const latestKey=cboHomeRoundKey(latest);
+  if(!latestKey){
+    CBO_UNREAD.home=0;
+    cboRenderUnread();
+    return;
+  }
+
+  const stored=localStorage.getItem(ctx.key);
+
+  // Första gången skapas baslinje: befintlig publicering blir inte retroaktivt oläst.
+  if(stored===null){
+    localStorage.setItem(ctx.key,latestKey);
+    CBO_UNREAD.home=0;
+    cboRenderUnread();
+    return;
+  }
+
+  if(markRead || document.getElementById('home')?.classList.contains('active')){
+    localStorage.setItem(ctx.key,latestKey);
+    CBO_UNREAD.home=0;
+    cboRenderUnread();
+    return;
+  }
+
+  CBO_UNREAD.home=stored===latestKey?0:1;
+  cboRenderUnread();
+}
+
+async function cboHomeMarkRead(){
+  await cboHomeSyncUnread({markRead:true});
+  cboRenderHomeActivity();
+}
+
+function cboRenderHomeActivity(){
+  const host=document.getElementById('homeActivityList');
+  if(!host)return;
+
+  const items=[];
+  const latest=cboLatestHomeRound();
+
+  if(latest){
+    const ranked=typeof rankRound==='function'?rankRound(latest.results||[]):[];
+    const winner=ranked?.[0];
+    const winnerText=winner?.name?`Vinnare: ${winner.name}`:'Resultat publicerat';
+    items.push(`
+      <div class="activity-item" role="button" tabindex="0"
+           onclick="showPage('rounds');setTimeout(()=>openRound(${Number(latest.round)||0}),30)">
+        <div class="activity-icon">🏆</div>
+        <div class="activity-main">
+          <div class="activity-title">Omgång ${cboActivityEsc(latest.round)} publicerad</div>
+          <div class="activity-meta">${cboActivityEsc(latest.date||'')} · ${cboActivityEsc(latest.course||'Bana ej angiven')}</div>
+          <div class="activity-text">${cboActivityEsc(winnerText)}</div>
+        </div>
+      </div>`);
+  }
+
+  const clubRows=(Array.isArray(CBO_CLUBHOUSE_LAST_ROWS)?CBO_CLUBHOUSE_LAST_ROWS:[])
+    .filter(r=>r&&!r.deleted_at)
+    .slice(0,3);
+
+  clubRows.forEach(r=>{
+    const body=String(r.body||'').trim();
+    const text=body
+      ? (body.length>100?body.slice(0,97)+'…':body)
+      : (r.image_path?'📷 Bild':'Nytt inlägg');
+    items.push(`
+      <div class="activity-item" role="button" tabindex="0" onclick="showPage('clubhouse')">
+        <div class="activity-icon">💬</div>
+        <div class="activity-main">
+          <div class="activity-title">${cboActivityEsc(r.player_name||'Klubbhuset')}</div>
+          <div class="activity-meta">${cboActivityEsc(cboActivityTime(r.created_at))}</div>
+          <div class="activity-text">${cboActivityEsc(text)}</div>
+        </div>
+      </div>`);
+  });
+
+  host.innerHTML=items.length
+    ? items.join('')
+    : '<div class="activity-empty">Ingen aktivitet att visa ännu.</div>';
+
+  const badge=document.getElementById('homeActivityBadge');
+  if(badge){
+    const total=cboTotalUnread();
+    badge.textContent=total>0?`${total} NYTT`:'CBO';
+  }
+}
+
+async function cboHomeInitUnread(){
+  await cboHomeSyncUnread();
+  cboRenderHomeActivity();
 }
 
 async function cboClubhouseUnreadContext(){
@@ -1533,6 +1711,7 @@ async function cboClubhouseSyncUnread(rows,{markRead=false}={}){
     if(latestMs)localStorage.setItem(ctx.key,new Date(latestMs).toISOString());
     CBO_UNREAD.clubhouse=0;
     cboRenderUnread();
+    cboRenderHomeActivity();
     return;
   }
 
@@ -1540,6 +1719,7 @@ async function cboClubhouseSyncUnread(rows,{markRead=false}={}){
     if(latestMs)localStorage.setItem(ctx.key,new Date(latestMs).toISOString());
     CBO_UNREAD.clubhouse=0;
     cboRenderUnread();
+    cboRenderHomeActivity();
     return;
   }
 
@@ -1552,6 +1732,7 @@ async function cboClubhouseSyncUnread(rows,{markRead=false}={}){
     return Number.isFinite(createdMs) && createdMs>lastReadMs;
   }).length;
   cboRenderUnread();
+  cboRenderHomeActivity();
 }
 
 async function cboClubhouseRefreshUnread(){
@@ -2021,6 +2202,7 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     cboTouchActivity();
     cboClubhouseInitUnread().catch(()=>{});
+    cboHomeInitUnread().catch(()=>{});
   }
 });
 
@@ -2034,7 +2216,10 @@ window.addEventListener('load',()=>{
   cboRefreshNotificationUI().catch(()=>{});
   setTimeout(cboStartActivityHeartbeat,1200);
   // Auth kan bli klar strax efter sidladdning. Några lätta försök räcker och ändrar ingen auth-logik.
-  [1400,3500,8000].forEach(ms=>setTimeout(()=>cboClubhouseInitUnread().catch(()=>{}),ms));
+  [1400,3500,8000].forEach(ms=>setTimeout(()=>{
+    cboClubhouseInitUnread().catch(()=>{});
+    cboHomeInitUnread().catch(()=>{});
+  },ms));
 });
 </script>
 
