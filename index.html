@@ -380,30 +380,6 @@ button{cursor:pointer}
   </section>
 
   <section id="admin" class="page content">
-   
-  <div class="card" id="adminAddMemberCard">
-    <div class="cardhead">
-      <div>
-        <div class="kicker">Medlemmar</div>
-        <h2>Lägg till medlem</h2>
-      </div>
-      <span class="badge">Admin</span>
-    </div>
-    <div class="sub">Skapar en ny CBO-medlem. Personlig CBO-kod skapas därefter via befintlig kodhantering.</div>
-
-    <label for="adminMemberName">Namn</label>
-    <input id="adminMemberName" type="text" autocomplete="off" placeholder="För- och efternamn">
-
-    <label for="adminMemberGolfId">Golf-ID</label>
-    <input id="adminMemberGolfId" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ÅÅMMDD-XXX">
-<label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;margin-top:12px">
-      <input id="adminMemberIsTest" type="checkbox" style="width:auto;flex:0 0 auto">
-      <span>TEST-medlem</span>
-    </label>
-
-    <button id="adminAddMemberButton" class="primary" type="button" onclick="cboAdminAddMember()">Lägg till medlem</button>
-    <div id="adminAddMemberStatus" class="notice hidden" style="margin-top:10px"></div>
-  </div>
 <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
@@ -468,8 +444,31 @@ button{cursor:pointer}
    <div class="card hidden" id="previewCard"></div>
    <div class="card" id="adminPushCard"><div class="cardhead"><h2>Skicka CBO-notis</h2><span class="badge">ADMIN</span></div><div class="sub">Skicka en kort påminnelse eller information till alla enheter som har aktiverat CBO-notiser.</div><label>Rubrik</label><input id="adminPushTitle" maxlength="60" value="⛳ CBO" placeholder="⛳ CBO"><label>Meddelande</label><textarea id="adminPushMessage" rows="3" maxlength="180" placeholder="Till exempel: Glöm inte boka starttid till finalen."></textarea><div id="adminPushStatus" class="sub" style="margin-top:8px"></div><button id="adminPushButton" class="primary" type="button" onclick="cboSendAdminPush()">Skicka notis till alla</button></div>
    <div class="card"><div class="cardhead"><h2>Spelarnas inloggning</h2><span class="badge">ADMIN</span></div><div class="sub">Golf-ID är spelarens identifierare. Här skapar du en ny personlig CBO-kod. Koden visas bara en gång.</div><div id="authPlayerList" style="margin-top:10px"></div></div>
-   
-  </section>
+
+<div class="card" id="adminAddMemberCard">
+    <div class="cardhead">
+      <div>
+        <div class="kicker">Medlemmar</div>
+        <h2>Lägg till medlem</h2>
+      </div>
+      <span class="badge">Admin</span>
+    </div>
+    <div class="sub">Skapar en ny CBO-medlem. Personlig CBO-kod skapas därefter via befintlig kodhantering.</div>
+
+    <label for="adminMemberName">Namn</label>
+    <input id="adminMemberName" type="text" autocomplete="off" placeholder="För- och efternamn">
+
+    <label for="adminMemberGolfId">Golf-ID</label>
+    <input id="adminMemberGolfId" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ÅÅMMDD-XXX">
+<label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;margin-top:12px">
+      <input id="adminMemberIsTest" type="checkbox" style="width:auto;flex:0 0 auto">
+      <span>TEST-medlem</span>
+    </label>
+
+    <button id="adminAddMemberButton" class="primary" type="button" onclick="cboAdminAddMember()">Lägg till medlem</button>
+    <div id="adminAddMemberStatus" class="notice hidden" style="margin-top:10px"></div>
+  </div>
+</section>
  </main>
 
  <nav class="nav" aria-label="Huvudmeny">
@@ -690,7 +689,7 @@ Golf-ID: ${golfId}`))return;
     if(nameEl)nameEl.value='';
     if(golfEl)golfEl.value='';
     if(testEl)testEl.checked=false;
-    try{if(typeof cboLoadAdminPlayerStatus==='function')await cboLoadAdminPlayerStatus();}catch(_){}
+    try{if(typeof cboLoadAdminPlayerStatus==='function')await cboLoadAdminPlayerStatus();if(typeof renderAuthPlayers==='function')renderAuthPlayers(false);}catch(_){}
     return data;
   }catch(e){
     console.error('Lägg till medlem misslyckades',e);
@@ -953,11 +952,18 @@ async function cboLoadAdminPlayerStatus(){
 
 function renderAuthPlayers(loadStatus=true){
   const el=document.getElementById('authPlayerList'); if(!el)return;
-  const ps=DATA.seasons['2026'].players.slice().sort((a,b)=>a.name.localeCompare(b.name,'sv'));
-  el.innerHTML=ps.map(p=>{
-    const s=CBO_ADMIN_PLAYER_STATUS[p.name];
-    return `<div class="auth-admin-row"><div><strong>${p.name}</strong>${cboAdminStatusLines(s)}</div><button class="code-btn" onclick="generatePlayerCode('${p.name.replace(/'/g,"\\'")}')">🔑 Ny CBO-kod</button></div>`;
+
+  const staticNames=DATA.seasons['2026'].players.map(p=>p.name);
+  const statusNames=Object.keys(CBO_ADMIN_PLAYER_STATUS||{});
+  const names=[...new Set([...staticNames,...statusNames])]
+    .sort((a,b)=>a.localeCompare(b,'sv'));
+
+  el.innerHTML=names.map(name=>{
+    const s=CBO_ADMIN_PLAYER_STATUS[name];
+    const testBadge=s?.is_test ? ` <span class="badge" style="margin-left:6px">TEST</span>` : '';
+    return `<div class="auth-admin-row"><div><strong>${name}</strong>${testBadge}${cboAdminStatusLines(s)}</div><button class="code-btn" onclick="generatePlayerCode('${name.replace(/'/g,"\\'")}')">🔑 Ny CBO-kod</button></div>`;
   }).join('');
+
   if(loadStatus)cboLoadAdminPlayerStatus();
 }
 async function generatePlayerCode(name){
