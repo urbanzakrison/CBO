@@ -1757,46 +1757,57 @@ function cboRenderHomeActivity(){
   const items=[];
   const latest=cboLatestHomeRound();
 
+  const toMs=value=>{
+    const ms=new Date(value||0).getTime();
+    return Number.isFinite(ms)?ms:0;
+  };
+
   const kansliRows=(Array.isArray(CBO_ADMIN_MESSAGES)?CBO_ADMIN_MESSAGES:[])
     .filter(r=>r&&r.created_at)
-    .sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime())
+    .sort((a,b)=>toMs(b.created_at)-toMs(a.created_at))
     .slice(0,3);
 
   kansliRows.forEach(r=>{
-    items.push(`
-      <div class="activity-item">
-        <div class="activity-icon">📣</div>
-        <div class="activity-main">
-          <div class="activity-title">Kansliet informerar</div>
-          <div class="activity-meta">${cboActivityEsc(cboActivityTime(r.created_at))} · ${cboActivityEsc(r.title||'Meddelande')}</div>
-          <div class="activity-text">${cboActivityEsc(r.body||'')}</div>
-        </div>
-      </div>`);
+    items.push({
+      ts:toMs(r.created_at),
+      html:`
+        <div class="activity-item">
+          <div class="activity-icon">📣</div>
+          <div class="activity-main">
+            <div class="activity-title">Kansliet informerar</div>
+            <div class="activity-meta">${cboActivityEsc(cboActivityTime(r.created_at))} · ${cboActivityEsc(r.title||'Meddelande')}</div>
+            <div class="activity-text">${cboActivityEsc(r.body||'')}</div>
+          </div>
+        </div>`
+    });
   });
 
   if(latest){
     const ranked=typeof rankRound==='function'?rankRound(latest.results||[]):[];
     const winner=ranked?.[0];
     const winnerText=winner?.name?`Vinnare: ${winner.name}`:'Resultat publicerat';
-    items.push(`
-      <div class="activity-item" role="button" tabindex="0"
-           onclick="showPage('rounds');setTimeout(()=>openRound(${Number(latest.round)||0}),30)">
-        <div class="activity-icon">🏆</div>
-        <div class="activity-main">
-          <div class="activity-title">Omgång ${cboActivityEsc(latest.round)} publicerad</div>
-          <div class="activity-meta">${cboActivityEsc(latest.date||'')} · ${cboActivityEsc(latest.course||'Bana ej angiven')}</div>
-          <div class="activity-text">${cboActivityEsc(winnerText)}</div>
-        </div>
-      </div>`);
+
+    // Använd publiceringstid om den finns. Annars används rundans datum.
+    const roundTs=toMs(latest.created_at||latest.published_at||latest.date);
+
+    items.push({
+      ts:roundTs,
+      html:`
+        <div class="activity-item" role="button" tabindex="0"
+             onclick="showPage('rounds');setTimeout(()=>openRound(${Number(latest.round)||0}),30)">
+          <div class="activity-icon">🏆</div>
+          <div class="activity-main">
+            <div class="activity-title">Omgång ${cboActivityEsc(latest.round)} publicerad</div>
+            <div class="activity-meta">${cboActivityEsc(latest.date||'')} · ${cboActivityEsc(latest.course||'Bana ej angiven')}</div>
+            <div class="activity-text">${cboActivityEsc(winnerText)}</div>
+          </div>
+        </div>`
+    });
   }
 
   const clubRows=(Array.isArray(CBO_CLUBHOUSE_LAST_ROWS)?CBO_CLUBHOUSE_LAST_ROWS:[])
     .filter(r=>r&&!r.deleted_at)
-    .sort((a,b)=>{
-      const bt=new Date(b?.created_at||0).getTime();
-      const at=new Date(a?.created_at||0).getTime();
-      return (Number.isFinite(bt)?bt:0)-(Number.isFinite(at)?at:0);
-    })
+    .sort((a,b)=>toMs(b.created_at)-toMs(a.created_at))
     .slice(0,3);
 
   clubRows.forEach(r=>{
@@ -1804,19 +1815,26 @@ function cboRenderHomeActivity(){
     const text=body
       ? (body.length>100?body.slice(0,97)+'…':body)
       : (r.image_path?'📷 Bild':'Nytt inlägg');
-    items.push(`
-      <div class="activity-item" role="button" tabindex="0" onclick="showPage('clubhouse')">
-        <div class="activity-icon">💬</div>
-        <div class="activity-main">
-          <div class="activity-title">${cboActivityEsc(r.player_name||'Klubbhuset')}</div>
-          <div class="activity-meta">${cboActivityEsc(cboActivityTime(r.created_at))}</div>
-          <div class="activity-text">${cboActivityEsc(text)}</div>
-        </div>
-      </div>`);
+
+    items.push({
+      ts:toMs(r.created_at),
+      html:`
+        <div class="activity-item" role="button" tabindex="0" onclick="showPage('clubhouse')">
+          <div class="activity-icon">💬</div>
+          <div class="activity-main">
+            <div class="activity-title">${cboActivityEsc(r.player_name||'Klubbhuset')}</div>
+            <div class="activity-meta">${cboActivityEsc(cboActivityTime(r.created_at))}</div>
+            <div class="activity-text">${cboActivityEsc(text)}</div>
+          </div>
+        </div>`
+    });
   });
 
+  // Gemensam tidslinje: alla tre källor sorteras tillsammans, nyast först.
+  items.sort((a,b)=>b.ts-a.ts);
+
   host.innerHTML=items.length
-    ? items.join('')
+    ? items.map(x=>x.html).join('')
     : '<div class="activity-empty">Ingen aktivitet att visa ännu.</div>';
 
   const badge=document.getElementById('homeActivityBadge');
