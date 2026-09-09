@@ -1497,6 +1497,75 @@ async function cboClubhouseLoad(){
   }finally{CBO_CLUBHOUSE_LOADING=false}
 }
 let CBO_CLUBHOUSE_IMAGE_FILE=null;
+let CBO_CLUBHOUSE_IMAGE_PREVIEW_URL=null;
+
+function cboFormatBytes(bytes){
+  if(!Number.isFinite(bytes)) return '';
+  if(bytes < 1024) return `${bytes} B`;
+  if(bytes < 1024*1024) return `${Math.round(bytes/1024)} KB`;
+  return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+}
+
+async function cboClubhouseLoadBitmap(file){
+  if('createImageBitmap' in window){
+    try{
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    }catch{}
+  }
+
+  const url=URL.createObjectURL(file);
+  try{
+    const img=new Image();
+    img.decoding='async';
+    img.src=url;
+    await img.decode();
+    return img;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function cboClubhouseCompressImage(file){
+  const bitmap=await cboClubhouseLoadBitmap(file);
+  const srcW=bitmap.width || bitmap.naturalWidth;
+  const srcH=bitmap.height || bitmap.naturalHeight;
+
+  if(!srcW || !srcH){
+    throw new Error('Kunde inte läsa bildens dimensioner.');
+  }
+
+  const maxSide=1600;
+  const scale=Math.min(1, maxSide/Math.max(srcW,srcH));
+  const outW=Math.max(1, Math.round(srcW*scale));
+  const outH=Math.max(1, Math.round(srcH*scale));
+
+  const canvas=document.createElement('canvas');
+  canvas.width=outW;
+  canvas.height=outH;
+
+  const ctx=canvas.getContext('2d', { alpha:false });
+  if(!ctx) throw new Error('Kunde inte förbereda bilden.');
+
+  ctx.drawImage(bitmap,0,0,outW,outH);
+
+  if(bitmap && typeof bitmap.close==='function'){
+    try{ bitmap.close(); }catch{}
+  }
+
+  const blob=await new Promise((resolve,reject)=>{
+    canvas.toBlob(
+      b=>b ? resolve(b) : reject(new Error('Kunde inte komprimera bilden.')),
+      'image/jpeg',
+      0.82
+    );
+  });
+
+  return new File(
+    [blob],
+    `clubhouse-${Date.now()}.jpg`,
+    {type:'image/jpeg',lastModified:Date.now()}
+  );
+}
 
 async function cboClubhouseChooseImage(input){
   const file=input?.files?.[0];
@@ -1507,20 +1576,29 @@ async function cboClubhouseChooseImage(input){
   const img=document.getElementById('clubhouseImagePreview');
 
   try{
-    if(file.size>5*1024*1024){
-      throw new Error('Bilden är större än 5 MB.');
+    if(status) status.textContent='Förbereder bild…';
+
+    const compressed=await cboClubhouseCompressImage(file);
+
+    if(compressed.size>5*1024*1024){
+      throw new Error('Bilden är fortfarande större än 5 MB efter komprimering.');
     }
 
-    CBO_CLUBHOUSE_IMAGE_FILE=file;
+    if(CBO_CLUBHOUSE_IMAGE_PREVIEW_URL){
+      try{ URL.revokeObjectURL(CBO_CLUBHOUSE_IMAGE_PREVIEW_URL); }catch{}
+    }
+
+    CBO_CLUBHOUSE_IMAGE_FILE=compressed;
+    CBO_CLUBHOUSE_IMAGE_PREVIEW_URL=URL.createObjectURL(compressed);
 
     if(img){
-      img.src=URL.createObjectURL(file);
+      img.src=CBO_CLUBHOUSE_IMAGE_PREVIEW_URL;
     }
     if(wrap){
       wrap.classList.remove('hidden');
     }
     if(status){
-      status.textContent='Bild vald · ännu inte uppladdad.';
+      status.textContent=`Bild klar · ${cboFormatBytes(file.size)} → ${cboFormatBytes(compressed.size)} · ännu inte uppladdad.`;
     }
   }catch(e){
     cboClubhouseClearImage();
@@ -1534,15 +1612,16 @@ function cboClubhouseClearImage(){
   const img=document.getElementById('clubhouseImagePreview');
   const status=document.getElementById('clubhouseStatus');
 
-  if(img?.src){
-    try{ URL.revokeObjectURL(img.src); }catch{}
-    img.removeAttribute('src');
+  if(CBO_CLUBHOUSE_IMAGE_PREVIEW_URL){
+    try{ URL.revokeObjectURL(CBO_CLUBHOUSE_IMAGE_PREVIEW_URL); }catch{}
   }
 
-  if(input)input.value='';
-  if(wrap)wrap.classList.add('hidden');
-
+  CBO_CLUBHOUSE_IMAGE_PREVIEW_URL=null;
   CBO_CLUBHOUSE_IMAGE_FILE=null;
+
+  if(img) img.removeAttribute('src');
+  if(input) input.value='';
+  if(wrap) wrap.classList.add('hidden');
 
   if(status){
     status.textContent='Text eller bild.';
