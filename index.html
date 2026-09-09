@@ -1755,6 +1755,7 @@ async function cboClubhouseSend(){
 
   if(btn)btn.disabled=true;
   let uploadedPath=null;
+  let messageId=null;
 
   try{
     if(imageFile){
@@ -1784,21 +1785,23 @@ async function cboClubhouseSend(){
 
       if(status)status.textContent='Publicerar bild…';
 
-      const {error:rpcError}=await window.CBO_SUPABASE_CLIENT.rpc(
+      const {data:rpcData,error:rpcError}=await window.CBO_SUPABASE_CLIENT.rpc(
         'cbo_clubhouse_send_image',
         {p_body:body,p_image_path:uploadedPath}
       );
 
       if(rpcError)throw rpcError;
+      messageId=rpcData||null;
     }else{
       if(status)status.textContent='Skickar…';
 
-      const {error}=await window.CBO_SUPABASE_CLIENT.rpc(
+      const {data:rpcData,error}=await window.CBO_SUPABASE_CLIENT.rpc(
         'cbo_clubhouse_send',
         {p_body:body}
       );
 
       if(error)throw error;
+      messageId=rpcData||null;
     }
 
     if(input)input.value='';
@@ -1806,6 +1809,26 @@ async function cboClubhouseSend(){
 
     if(status)status.textContent='Skickat.';
     await cboClubhouseLoad();
+
+    if(messageId){
+      try{
+        const {data:pushData,error:pushError}=await window.CBO_SUPABASE_CLIENT.functions.invoke(
+          'send-cbo-push',
+          {
+            body:{
+              action:'send_clubhouse',
+              message_id:messageId
+            }
+          }
+        );
+
+        if(pushError||pushData?.ok===false){
+          console.warn('Klubbhusnotis kunde inte skickas',pushError||pushData?.error||pushData);
+        }
+      }catch(pushError){
+        console.warn('Klubbhusnotis kunde inte skickas',pushError);
+      }
+    }
 
     setTimeout(()=>{
       if(status)status.textContent='Text eller bild.';
