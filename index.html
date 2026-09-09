@@ -1477,21 +1477,43 @@ async function cboToggleNotifications(){
   finally{if(btn)btn.disabled=false;await cboRefreshNotificationUI();}
 }
 async function cboSendAdminPush(){
-  const title=(document.getElementById('adminPushTitle')?.value||'⛳ CBO').trim();
+  const title=(document.getElementById('adminPushTitle')?.value||'').trim();
   const message=(document.getElementById('adminPushMessage')?.value||'').trim();
-  const btn=document.getElementById('adminPushButton');
   const status=document.getElementById('adminPushStatus');
-  if(!message){alert('Skriv ett meddelande först.');return;}
-  if(!window.CBO_SUPABASE_CLIENT){alert('Du behöver vara inloggad som kanslist.');return;}
-  if(!confirm(`Skicka denna CBO-notis till alla som har aktiverat notiser?\n\n${title}\n${message}`)) return;
-  if(btn) btn.disabled=true; if(status) status.textContent='Skickar…';
+  const btn=document.getElementById('adminPushButton');
+  if(!title||!message){alert('Fyll i rubrik och meddelande.');return}
+  if(!confirm(`Skicka från Kansliet?\n\n${title}\n${message}`)) return;
+  if(btn)btn.disabled=true;
+  if(status)status.textContent='Sparar meddelandet…';
+
   try{
-    const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('send-cbo-push',{body:{action:'send_message',title,message}});
-    if(error||!data?.ok) throw new Error(error?.message||data?.error||'Notisen kunde inte skickas.');
-    if(status) status.textContent=`Skickat till ${Number(data.sent||0)} prenumeration${Number(data.sent||0)===1?'':'er'}.`;
-    const msg=document.getElementById('adminPushMessage'); if(msg) msg.value='';
-  }catch(e){if(status)status.textContent='Utskicket misslyckades.';alert(e?.message||String(e));}
-  finally{if(btn)btn.disabled=false;}
+    const {data:storedId,error:saveError}=await window.CBO_SUPABASE_CLIENT.rpc(
+      'cbo_admin_message_create',{p_title:title,p_body:message}
+    );
+    if(saveError||!storedId)throw new Error(saveError?.message||'Meddelandet kunde inte sparas.');
+
+    if(status)status.textContent='Sparat · skickar push…';
+    try{
+      const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke(
+        'send-cbo-push',{body:{action:'send_message',title,message}}
+      );
+      if(error||!data?.ok)throw new Error(error?.message||data?.error||'Notisen kunde inte skickas.');
+      if(status)status.textContent=`Kansliet informerar · sparat och skickat till ${Number(data.sent||0)} prenumeration${Number(data.sent||0)===1?'':'er'}.`;
+    }catch(pushError){
+      console.warn('Kanslimeddelandet sparades men pushen misslyckades',pushError);
+      if(status)status.textContent='Kanslimeddelandet är sparat, men pushen kunde inte skickas.';
+    }
+
+    const msg=document.getElementById('adminPushMessage');
+    if(msg)msg.value='';
+    await cboLoadAdminMessages();
+    cboRenderHomeActivity();
+  }catch(e){
+    if(status)status.textContent='Meddelandet kunde inte sparas.';
+    alert(e?.message||String(e));
+  }finally{
+    if(btn)btn.disabled=false;
+  }
 }
 
 async function cboSendWinnerPush(roundNo,winner){
@@ -1508,6 +1530,7 @@ let CBO_CLUBHOUSE_LOADING=false;
 let CBO_CLUBHOUSE_REACTIONS={};
 let CBO_CLUBHOUSE_LAST_ROWS=[];
 const CBO_UNREAD={clubhouse:0,home:0};
+let CBO_ADMIN_MESSAGES=[];
 
 function cboTotalUnread(){
   return Object.values(CBO_UNREAD).reduce((sum,n)=>sum+Number(n||0),0);
@@ -1618,12 +1641,42 @@ async function cboHomeMarkRead(){
   cboRenderHomeActivity();
 }
 
+async function cboLoadAdminMessages(){
+  if(!window.CBO_SUPABASE_CLIENT)return [];
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_admin_messages_feed',{p_limit:20});
+    if(error)throw error;
+    CBO_ADMIN_MESSAGES=Array.isArray(data)?data:[];
+    return CBO_ADMIN_MESSAGES;
+  }catch(e){
+    console.warn('Kansliet informerar kunde inte hämtas',e);
+    return CBO_ADMIN_MESSAGES;
+  }
+}
+
 function cboRenderHomeActivity(){
   const host=document.getElementById('homeActivityList');
   if(!host)return;
 
   const items=[];
   const latest=cboLatestHomeRound();
+
+  const kansliRows=(Array.isArray(CBO_ADMIN_MESSAGES)?CBO_ADMIN_MESSAGES:[])
+    .filter(r=>r&&r.created_at)
+    .sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime())
+    .slice(0,3);
+
+  kansliRows.forEach(r=>{
+    items.push(`
+      <div class="activity-item">
+        <div class="activity-icon">📣</div>
+        <div class="activity-main">
+          <div class="activity-title">Kansliet informerar</div>
+          <div class="activity-meta">${cboActivityEsc(cboActivityTime(r.created_at))} · ${cboActivityEsc(r.title||'Meddelande')}</div>
+          <div class="activity-text">${cboActivityEsc(r.body||'')}</div>
+        </div>
+      </div>`);
+  });
 
   if(latest){
     const ranked=typeof rankRound==='function'?rankRound(latest.results||[]):[];
@@ -1643,6 +1696,11 @@ function cboRenderHomeActivity(){
 
   const clubRows=(Array.isArray(CBO_CLUBHOUSE_LAST_ROWS)?CBO_CLUBHOUSE_LAST_ROWS:[])
     .filter(r=>r&&!r.deleted_at)
+    .sort((a,b)=>{
+      const bt=new Date(b?.created_at||0).getTime();
+      const at=new Date(a?.created_at||0).getTime();
+      return (Number.isFinite(bt)?bt:0)-(Number.isFinite(at)?at:0);
+    })
     .slice(0,3);
 
   clubRows.forEach(r=>{
@@ -1673,7 +1731,7 @@ function cboRenderHomeActivity(){
 }
 
 async function cboHomeInitUnread(){
-  await cboHomeSyncUnread();
+  await Promise.all([cboHomeSyncUnread(),cboLoadAdminMessages()]);
   cboRenderHomeActivity();
 }
 
