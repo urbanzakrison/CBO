@@ -389,18 +389,14 @@ button{cursor:pointer}
       </div>
       <span class="badge">Admin</span>
     </div>
-    <div class="sub">Skapar en ny CBO-medlem via befintlig server-side medlems- och kodhantering.</div>
+    <div class="sub">Skapar en ny CBO-medlem. Personlig CBO-kod skapas därefter via befintlig kodhantering.</div>
 
     <label for="adminMemberName">Namn</label>
     <input id="adminMemberName" type="text" autocomplete="off" placeholder="För- och efternamn">
 
     <label for="adminMemberGolfId">Golf-ID</label>
     <input id="adminMemberGolfId" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ÅÅMMDD-XXX">
-
-    <label for="adminMemberCode">Personlig CBO-kod</label>
-    <input id="adminMemberCode" type="password" autocomplete="new-password" inputmode="numeric" placeholder="Minst 8 tecken">
-
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;margin-top:12px">
+<label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;margin-top:12px">
       <input id="adminMemberIsTest" type="checkbox" style="width:auto;flex:0 0 auto">
       <span>TEST-medlem</span>
     </label>
@@ -664,60 +660,42 @@ function openPlayer(name){
 async function cboAdminAddMember(){
   const name=(document.getElementById('adminMemberName')?.value||'').trim();
   const golfId=(document.getElementById('adminMemberGolfId')?.value||'').trim();
-  const code=(document.getElementById('adminMemberCode')?.value||'').trim();
   const isTest=!!document.getElementById('adminMemberIsTest')?.checked;
   const status=document.getElementById('adminAddMemberStatus');
   const btn=document.getElementById('adminAddMemberButton');
 
   if(!name){alert('Fyll i namn.');return}
-  if(!golfId){alert('Fyll i Golf-ID.');return}
-  if(code.length<8){alert('CBO-koden måste vara minst 8 tecken.');return}
+  if(!/^[0-9]{6}-[0-9]{3}$/.test(golfId)){
+    alert('Golf-ID måste anges som ÅÅMMDD-XXX.');
+    return;
+  }
+  if(!confirm(`Lägg till medlem?
 
-  if(!confirm(`Lägg till medlem?\n\n${name}${isTest?' · TEST':''}`))return;
+${name}${isTest?' · TEST':''}
+Golf-ID: ${golfId}`))return;
 
   if(btn)btn.disabled=true;
-  if(status){
-    status.classList.remove('hidden');
-    status.textContent='Skapar medlem…';
-  }
+  if(status){status.classList.remove('hidden');status.textContent='Skapar medlem…';}
 
   try{
-    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc(
-      'cbo_admin_add_member',
-      {
-        p_name:name,
-        p_golf_id:golfId,
-        p_code:code,
-        p_is_test:isTest
-      }
-    );
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_admin_add_member',{
+      p_name:name,p_golf_id:golfId,p_is_test:isTest
+    });
     if(error)throw error;
 
-    if(status)status.textContent=`Medlem skapad${isTest?' som TEST':''}.`;
+    if(status)status.textContent=`Medlem skapad${isTest?' som TEST':''}. Skapa därefter personlig CBO-kod via befintlig kodhantering.`;
     const nameEl=document.getElementById('adminMemberName');
     const golfEl=document.getElementById('adminMemberGolfId');
-    const codeEl=document.getElementById('adminMemberCode');
     const testEl=document.getElementById('adminMemberIsTest');
     if(nameEl)nameEl.value='';
     if(golfEl)golfEl.value='';
-    if(codeEl)codeEl.value='';
     if(testEl)testEl.checked=false;
-
-    // Uppdatera befintlig adminstatus om funktionen finns.
-    try{
-      if(typeof cboLoadAdminPlayerStatus==='function')await cboLoadAdminPlayerStatus();
-    }catch(_){}
-
+    try{if(typeof cboLoadAdminPlayerStatus==='function')await cboLoadAdminPlayerStatus();}catch(_){}
     return data;
   }catch(e){
     console.error('Lägg till medlem misslyckades',e);
-    if(status){
-      status.classList.remove('hidden');
-      status.textContent=e?.message||'Medlemmen kunde inte skapas.';
-    }
-  }finally{
-    if(btn)btn.disabled=false;
-  }
+    if(status){status.classList.remove('hidden');status.textContent=e?.message||'Medlemmen kunde inte skapas.';}
+  }finally{if(btn)btn.disabled=false;}
 }
 
 function setupAdmin(){
