@@ -449,7 +449,7 @@ button{cursor:pointer}
  </main>
 
  <nav class="nav" aria-label="Huvudmeny">
-  <button class="active" type="button" data-page="home"><b>🏌️</b><span id="homeUnreadBadge" class="nav-unread-badge hidden" aria-label="Olästa på Hem"></span>Hem</button>
+  <button class="active" type="button" data-page="home"><b>⛳</b><span id="homeUnreadBadge" class="nav-unread-badge hidden" aria-label="Olästa på Hem"></span>Hem</button>
   <button type="button" data-page="leaderboard"><b>🏆</b>Leaderboard</button>
   <button type="button" data-page="rounds"><b>⛳</b>Omgångar</button>
   <button type="button" data-page="statistics"><b>📊</b>Statistik</button>
@@ -1507,6 +1507,7 @@ async function cboSendAdminPush(){
     const msg=document.getElementById('adminPushMessage');
     if(msg)msg.value='';
     await cboLoadAdminMessages();
+    await cboHomeSyncUnread({markRead:true});
     cboRenderHomeActivity();
   }catch(e){
     if(status)status.textContent='Meddelandet kunde inte sparas.';
@@ -1603,36 +1604,59 @@ async function cboHomeUnreadContext(){
   };
 }
 
+function cboKansliLatestCreatedAt(){
+  let latest=0;
+  (Array.isArray(CBO_ADMIN_MESSAGES)?CBO_ADMIN_MESSAGES:[]).forEach(r=>{
+    const t=new Date(r?.created_at||0).getTime();
+    if(Number.isFinite(t)&&t>latest)latest=t;
+  });
+  return latest;
+}
+function cboKansliUnreadForKey(key,{markRead=false}={}){
+  const latestMs=cboKansliLatestCreatedAt();
+  if(!latestMs)return 0;
+  const kansliKey=`${key}-kansli`;
+  const stored=localStorage.getItem(kansliKey);
+
+  // Första körningen skapar baslinje: äldre Kansliet-meddelanden blir inte retroaktivt olästa.
+  if(stored===null){
+    localStorage.setItem(kansliKey,new Date(latestMs).toISOString());
+    return 0;
+  }
+  if(markRead || document.getElementById('home')?.classList.contains('active')){
+    localStorage.setItem(kansliKey,new Date(latestMs).toISOString());
+    return 0;
+  }
+  const lastReadMs=new Date(stored).getTime();
+  return (Array.isArray(CBO_ADMIN_MESSAGES)?CBO_ADMIN_MESSAGES:[]).filter(r=>{
+    const t=new Date(r?.created_at||0).getTime();
+    return Number.isFinite(t)&&t>lastReadMs;
+  }).length;
+}
+
 async function cboHomeSyncUnread({markRead=false}={}){
   const ctx=await cboHomeUnreadContext();
   if(!ctx)return;
 
   const latest=cboLatestHomeRound();
   const latestKey=cboHomeRoundKey(latest);
-  if(!latestKey){
-    CBO_UNREAD.home=0;
-    cboRenderUnread();
-    return;
+  let roundUnread=0;
+
+  if(latestKey){
+    const stored=localStorage.getItem(ctx.key);
+
+    // Första gången skapas baslinje: befintlig publicering blir inte retroaktivt oläst.
+    if(stored===null){
+      localStorage.setItem(ctx.key,latestKey);
+    }else if(markRead || document.getElementById('home')?.classList.contains('active')){
+      localStorage.setItem(ctx.key,latestKey);
+    }else{
+      roundUnread=stored===latestKey?0:1;
+    }
   }
 
-  const stored=localStorage.getItem(ctx.key);
-
-  // Första gången skapas baslinje: befintlig publicering blir inte retroaktivt oläst.
-  if(stored===null){
-    localStorage.setItem(ctx.key,latestKey);
-    CBO_UNREAD.home=0;
-    cboRenderUnread();
-    return;
-  }
-
-  if(markRead || document.getElementById('home')?.classList.contains('active')){
-    localStorage.setItem(ctx.key,latestKey);
-    CBO_UNREAD.home=0;
-    cboRenderUnread();
-    return;
-  }
-
-  CBO_UNREAD.home=stored===latestKey?0:1;
+  const kansliUnread=cboKansliUnreadForKey(ctx.key,{markRead});
+  CBO_UNREAD.home=roundUnread+kansliUnread;
   cboRenderUnread();
 }
 
@@ -1731,7 +1755,8 @@ function cboRenderHomeActivity(){
 }
 
 async function cboHomeInitUnread(){
-  await Promise.all([cboHomeSyncUnread(),cboLoadAdminMessages()]);
+  await cboLoadAdminMessages();
+  await cboHomeSyncUnread();
   cboRenderHomeActivity();
 }
 
