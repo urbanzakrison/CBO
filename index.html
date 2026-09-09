@@ -106,6 +106,13 @@ button{cursor:pointer}
 .clubhouse-actions .primary{margin:0;flex:0 0 auto;width:auto;padding:10px 16px}
 .clubhouse-status{flex:1;font-size:11px;color:var(--muted)}
 .clubhouse-empty{padding:28px 12px;text-align:center;color:var(--muted)}
+.club-msg-reactions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+.club-reaction{border:1px solid #d3c5a7;background:#fffaf0;color:var(--ink);border-radius:999px;padding:5px 8px;font-size:14px;line-height:1;display:inline-flex;align-items:center;gap:4px;min-height:30px}
+.club-reaction.mine{background:#dcebdc;border-color:#8eb090;color:var(--g);font-weight:850}
+.club-reaction .count{font-size:11px;font-weight:850}
+.club-reaction-add{border:1px dashed #bca879;background:#fffaf0;color:var(--g);border-radius:999px;padding:5px 9px;font-size:12px;font-weight:850;min-height:30px}
+.club-reaction-picker{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.club-reaction-choice{border:1px solid #d3c5a7;background:#fffaf0;border-radius:999px;padding:6px 8px;font-size:16px;line-height:1}
 
 </style>
 
@@ -1459,7 +1466,80 @@ async function cboSendWinnerPush(roundNo,winner){
 
 /* === CBO 4.6.0 – Klubbhuset textchatt === */
 let CBO_CLUBHOUSE_CHANNEL=null;
+let CBO_CLUBHOUSE_REACTIONS_CHANNEL=null;
 let CBO_CLUBHOUSE_LOADING=false;
+let CBO_CLUBHOUSE_REACTIONS={};
+const CBO_CLUBHOUSE_REACTION_CHOICES=['👍','❤️','😂','👏','🔥','⛳','🏆','🍻','👌','🤣','😮','😢','😡'];
+
+function cboClubhouseReactionRowsByMessage(rows){
+  const map={};
+  (Array.isArray(rows)?rows:[]).forEach(r=>{
+    if(!map[r.message_id])map[r.message_id]=[];
+    map[r.message_id].push(r);
+  });
+  return map;
+}
+
+async function cboClubhouseLoadReactions(){
+  if(!window.CBO_SUPABASE_CLIENT)return {};
+  const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_reactions_feed');
+  if(error)throw error;
+  CBO_CLUBHOUSE_REACTIONS=cboClubhouseReactionRowsByMessage(data);
+  return CBO_CLUBHOUSE_REACTIONS;
+}
+
+function cboClubhouseReactionHtml(messageId,deleted){
+  if(deleted)return '';
+  const reactions=CBO_CLUBHOUSE_REACTIONS[messageId]||[];
+  const existing=reactions.map(r=>{
+    const emoji=cboClubhouseEsc(r.emoji||'');
+    const count=Number(r.reaction_count||0);
+    const mine=!!r.reacted_by_me;
+    return `<button class="club-reaction ${mine?'mine':''}" type="button" onclick="cboClubhouseToggleReaction('${messageId}',${JSON.stringify(r.emoji||'')})">${emoji}${count>1?` <span class="count">${count}</span>`:''}</button>`;
+  }).join('');
+
+  return `<div class="club-msg-reactions" id="clubReactions-${messageId}">
+    ${existing}
+    <button class="club-reaction-add" type="button" onclick="cboClubhouseShowReactionPicker('${messageId}')">😊 +</button>
+  </div>
+  <div id="clubReactionPicker-${messageId}" class="club-reaction-picker hidden"></div>`;
+}
+
+function cboClubhouseShowReactionPicker(messageId){
+  const el=document.getElementById(`clubReactionPicker-${messageId}`);
+  if(!el)return;
+  if(!el.classList.contains('hidden')){
+    el.classList.add('hidden');
+    el.innerHTML='';
+    return;
+  }
+  const choices=CBO_CLUBHOUSE_REACTION_CHOICES.map(e=>
+    `<button class="club-reaction-choice" type="button" onclick="cboClubhouseToggleReaction('${messageId}',${JSON.stringify(e)})">${cboClubhouseEsc(e)}</button>`
+  ).join('');
+  el.innerHTML=choices+`<button class="club-reaction-add" type="button" onclick="cboClubhouseCustomReaction('${messageId}')">Fler…</button>`;
+  el.classList.remove('hidden');
+}
+
+async function cboClubhouseCustomReaction(messageId){
+  const emoji=prompt('Välj en emoji från tangentbordet och klistra in den här:','');
+  if(!emoji)return;
+  await cboClubhouseToggleReaction(messageId,emoji.trim());
+}
+
+async function cboClubhouseToggleReaction(messageId,emoji){
+  if(!emoji||!window.CBO_SUPABASE_CLIENT)return;
+  try{
+    const {error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_toggle_reaction',{
+      p_message_id:messageId,
+      p_emoji:emoji
+    });
+    if(error)throw error;
+    await cboClubhouseLoad();
+  }catch(e){
+    console.error('Kunde inte reagera i Klubbhuset',e);
+    alert(e?.message||String(e));
+  }
+}
 
 function cboClubhouseEsc(v){
   return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -1485,7 +1565,10 @@ async function cboClubhouseLoad(){
   if(!feed||CBO_CLUBHOUSE_LOADING||!window.CBO_SUPABASE_CLIENT)return;
   CBO_CLUBHOUSE_LOADING=true;
   try{
-    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_feed',{p_limit:100});
+    const [{data,error}]=await Promise.all([
+      window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_feed',{p_limit:100}),
+      cboClubhouseLoadReactions()
+    ]);
     if(error)throw error;
     const rows=Array.isArray(data)?data:[];
     const me=window.CBO_CURRENT_PLAYER?.name||'';
@@ -1519,6 +1602,7 @@ async function cboClubhouseLoad(){
         <div class="club-msg-head"><span class="club-msg-name">${cboClubhouseEsc(m.player_name||'CBO-spelare')}</span><span class="club-msg-time">${cboClubhouseEsc(cboClubhouseTime(m.created_at))}</span></div>
         ${body?`<div class="club-msg-body">${body}</div>`:''}
         ${imageHtml}
+        ${cboClubhouseReactionHtml(m.id,deleted)}
       </div>`;
     }).join('');
     feed.scrollTop=feed.scrollHeight;
@@ -1748,13 +1832,25 @@ async function cboClubhouseSend(){
 }
 async function cboClubhouseOpen(){
   await cboClubhouseLoad();
-  if(CBO_CLUBHOUSE_CHANNEL||!window.CBO_SUPABASE_CLIENT)return;
-  try{
-    CBO_CLUBHOUSE_CHANNEL=window.CBO_SUPABASE_CLIENT
-      .channel('cbo-clubhouse-live')
-      .on('postgres_changes',{event:'*',schema:'public',table:'cbo_clubhouse_messages'},()=>cboClubhouseLoad())
-      .subscribe();
-  }catch(e){console.warn('Klubbhuset realtime kunde inte startas',e)}
+  if(!window.CBO_SUPABASE_CLIENT)return;
+
+  if(!CBO_CLUBHOUSE_CHANNEL){
+    try{
+      CBO_CLUBHOUSE_CHANNEL=window.CBO_SUPABASE_CLIENT
+        .channel('cbo-clubhouse-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'cbo_clubhouse_messages'},()=>cboClubhouseLoad())
+        .subscribe();
+    }catch(e){console.warn('Klubbhuset realtime kunde inte startas',e)}
+  }
+
+  if(!CBO_CLUBHOUSE_REACTIONS_CHANNEL){
+    try{
+      CBO_CLUBHOUSE_REACTIONS_CHANNEL=window.CBO_SUPABASE_CLIENT
+        .channel('cbo-clubhouse-reactions-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'cbo_clubhouse_reactions'},()=>cboClubhouseLoad())
+        .subscribe();
+    }catch(e){console.warn('Klubbhuset reaction realtime kunde inte startas',e)}
+  }
 }
 document.addEventListener('keydown',e=>{
   if(e.target?.id==='clubhouseInput' && e.key==='Enter' && !e.shiftKey){
