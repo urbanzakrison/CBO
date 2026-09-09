@@ -1495,7 +1495,7 @@ function cboClubhouseReactionHtml(messageId,deleted){
     const emoji=cboClubhouseEsc(r.emoji||'');
     const count=Number(r.reaction_count||0);
     const mine=!!r.reacted_by_me;
-    return `<button class="club-reaction ${mine?'mine':''}" type="button" onclick="cboClubhouseToggleReaction('${messageId}',${JSON.stringify(r.emoji||'')})">${emoji}${count>1?` <span class="count">${count}</span>`:''}</button>`;
+    return `<button class="club-reaction ${mine?'mine':''}" type="button" data-message-id="${messageId}" data-emoji="${cboClubhouseEsc(r.emoji||'')}" onclick="cboClubhouseToggleReaction(this.dataset.messageId,this.dataset.emoji)">${emoji}${count>1?` <span class="count">${count}</span>`:''}</button>`;
   }).join('');
 
   return `<div class="club-msg-reactions" id="clubReactions-${messageId}">
@@ -1514,7 +1514,7 @@ function cboClubhouseShowReactionPicker(messageId){
     return;
   }
   const choices=CBO_CLUBHOUSE_REACTION_CHOICES.map(e=>
-    `<button class="club-reaction-choice" type="button" onclick="cboClubhouseToggleReaction('${messageId}',${JSON.stringify(e)})">${cboClubhouseEsc(e)}</button>`
+    `<button class="club-reaction-choice" type="button" data-message-id="${messageId}" data-emoji="${cboClubhouseEsc(e)}" onclick="cboClubhouseToggleReaction(this.dataset.messageId,this.dataset.emoji)">${cboClubhouseEsc(e)}</button>`
   ).join('');
   el.innerHTML=choices+`<button class="club-reaction-add" type="button" onclick="cboClubhouseCustomReaction('${messageId}')">Fler…</button>`;
   el.classList.remove('hidden');
