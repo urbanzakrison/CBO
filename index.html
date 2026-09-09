@@ -380,7 +380,35 @@ button{cursor:pointer}
   </section>
 
   <section id="admin" class="page content">
-   <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+   
+  <div class="card" id="adminAddMemberCard">
+    <div class="cardhead">
+      <div>
+        <div class="kicker">Medlemmar</div>
+        <h2>Lägg till medlem</h2>
+      </div>
+      <span class="badge">Admin</span>
+    </div>
+    <div class="sub">Skapar en ny CBO-medlem via befintlig server-side medlems- och kodhantering.</div>
+
+    <label for="adminMemberName">Namn</label>
+    <input id="adminMemberName" type="text" autocomplete="off" placeholder="För- och efternamn">
+
+    <label for="adminMemberGolfId">Golf-ID</label>
+    <input id="adminMemberGolfId" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ÅÅMMDD-XXX">
+
+    <label for="adminMemberCode">Personlig CBO-kod</label>
+    <input id="adminMemberCode" type="password" autocomplete="new-password" inputmode="numeric" placeholder="Minst 8 tecken">
+
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;margin-top:12px">
+      <input id="adminMemberIsTest" type="checkbox" style="width:auto;flex:0 0 auto">
+      <span>TEST-medlem</span>
+    </label>
+
+    <button id="adminAddMemberButton" class="primary" type="button" onclick="cboAdminAddMember()">Lägg till medlem</button>
+    <div id="adminAddMemberStatus" class="notice hidden" style="margin-top:10px"></div>
+  </div>
+<div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
@@ -632,6 +660,66 @@ function openPlayer(name){
  let el=document.getElementById('playerDetail');el.classList.remove('hidden');el.innerHTML=`<div class="cardhead"><h2>${name}</h2><span class="badge">${selectedSeason}</span></div><div class="sub">Starthandicap ${p?.startHcp??'–'}</div><div class="detail-metrics"><div><span class="sub">Totalen</span><strong>${fmt(t?.value??d?.points)}</strong></div><div><span class="sub">Närvaro</span><strong>${d?.attendance||0}</strong></div><div><span class="sub">Netto</span><strong>${fmt(d?.net)}</strong></div></div><h3>Säsongshistorik</h3>${career.join('')}`;
  el.scrollIntoView({behavior:'smooth'});
 }
+
+async function cboAdminAddMember(){
+  const name=(document.getElementById('adminMemberName')?.value||'').trim();
+  const golfId=(document.getElementById('adminMemberGolfId')?.value||'').trim();
+  const code=(document.getElementById('adminMemberCode')?.value||'').trim();
+  const isTest=!!document.getElementById('adminMemberIsTest')?.checked;
+  const status=document.getElementById('adminAddMemberStatus');
+  const btn=document.getElementById('adminAddMemberButton');
+
+  if(!name){alert('Fyll i namn.');return}
+  if(!golfId){alert('Fyll i Golf-ID.');return}
+  if(code.length<8){alert('CBO-koden måste vara minst 8 tecken.');return}
+
+  if(!confirm(`Lägg till medlem?\n\n${name}${isTest?' · TEST':''}`))return;
+
+  if(btn)btn.disabled=true;
+  if(status){
+    status.classList.remove('hidden');
+    status.textContent='Skapar medlem…';
+  }
+
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc(
+      'cbo_admin_add_member',
+      {
+        p_name:name,
+        p_golf_id:golfId,
+        p_code:code,
+        p_is_test:isTest
+      }
+    );
+    if(error)throw error;
+
+    if(status)status.textContent=`Medlem skapad${isTest?' som TEST':''}.`;
+    const nameEl=document.getElementById('adminMemberName');
+    const golfEl=document.getElementById('adminMemberGolfId');
+    const codeEl=document.getElementById('adminMemberCode');
+    const testEl=document.getElementById('adminMemberIsTest');
+    if(nameEl)nameEl.value='';
+    if(golfEl)golfEl.value='';
+    if(codeEl)codeEl.value='';
+    if(testEl)testEl.checked=false;
+
+    // Uppdatera befintlig adminstatus om funktionen finns.
+    try{
+      if(typeof cboLoadAdminPlayerStatus==='function')await cboLoadAdminPlayerStatus();
+    }catch(_){}
+
+    return data;
+  }catch(e){
+    console.error('Lägg till medlem misslyckades',e);
+    if(status){
+      status.classList.remove('hidden');
+      status.textContent=e?.message||'Medlemmen kunde inte skapas.';
+    }
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
 function setupAdmin(){
  let before=selectedSeason;selectedSeason='2026';const next=Math.max(...rounds().map(x=>x.round))+1;selectedSeason=before;
  document.getElementById('newRoundNo').value=next;if(!document.getElementById('newDate').value)document.getElementById('newDate').value=new Date().toISOString().slice(0,10);
