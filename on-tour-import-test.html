@@ -24,7 +24,16 @@ label{display:block;font-size:11px;color:var(--muted);font-weight:800;margin:9px
     <div class="kicker">Dold adminprototyp · On Tour</div>
     <h1>GameBook-importtest</h1>
     <div class="sub">Endast test av bild → server-side parse-gamebook → sammanslagen granskningslista. Ingen On Tour-data publiceras från denna sida.</div>
-    <div id="authStatus" class="notice">Verifierar CBO-admin…</div>
+    <div id="authStatus" class="notice">Kontrollerar CBO-admin…</div>
+  </div>
+
+  <div id="loginCard" class="card hidden">
+    <h2>Logga in för testet</h2>
+    <div class="sub">Den installerade CBO-appen och Safari kan ha separata sessioner på iPhone. Den här inloggningen använder samma Supabase Auth och samma server-side adminverifiering som CBO, men ändrar inte den fungerande CBO-inloggningen.</div>
+    <label>Golf-ID</label><input id="golfId" inputmode="numeric" autocomplete="username" placeholder="XXXXXX-XXX" maxlength="10">
+    <label>Personlig CBO-kod</label><input id="cboCode" type="password" autocomplete="current-password" placeholder="8 tecken" maxlength="32">
+    <button id="loginBtn" class="primary" type="button">Logga in</button>
+    <div id="loginError" class="notice hidden"></div>
   </div>
 
   <div id="testUi" class="hidden">
@@ -59,63 +68,59 @@ label{display:block;font-size:11px;color:var(--muted);font-weight:800;margin:9px
 let sb=null;
 let selectedFiles=[];
 let mergedRows=[];
-
 const $=id=>document.getElementById(id);
 const norm=s=>String(s||'').trim().toLocaleLowerCase('sv-SE').replace(/\s+/g,' ');
+const normalizeGolf=v=>String(v||'').replace(/\D/g,'').slice(0,9);
+function escapeHtml(s){return String(s??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));}
+
+async function verifyAdmin(){
+  const {data,error}=await sb.rpc('cbo_current_player');
+  if(error) throw error;
+  const p=Array.isArray(data)?data[0]:data;
+  if(!p||p.is_admin!==true) throw new Error('Endast verifierad CBO-admin får använda testet.');
+  $('loginCard').classList.add('hidden');
+  $('authStatus').innerHTML=`<span class="status-ok">✓ Admin verifierad: ${escapeHtml(p.name||'')}</span><br>Ingen publiceringsfunktion är aktiverad på testsidan.`;
+  $('testUi').classList.remove('hidden');
+}
 
 async function boot(){
   try{
     if(!window.CBO_SUPABASE_URL||!window.CBO_SUPABASE_PUBLISHABLE_KEY||!window.supabase?.createClient) throw new Error('Supabase-konfiguration saknas.');
     sb=window.supabase.createClient(window.CBO_SUPABASE_URL,window.CBO_SUPABASE_PUBLISHABLE_KEY);
     const {data:{session}}=await sb.auth.getSession();
-    if(!session) throw new Error('Du måste först logga in i CBO-appen i samma webbläsare.');
-    const {data,error}=await sb.rpc('cbo_current_player');
-    if(error) throw error;
-    const p=Array.isArray(data)?data[0]:data;
-    if(!p||p.is_admin!==true) throw new Error('Endast verifierad CBO-admin får använda testet.');
-    $('authStatus').innerHTML=`<span class="status-ok">✓ Admin verifierad: ${escapeHtml(p.name||'')}</span><br>Ingen publiceringsfunktion är aktiverad på testsidan.`;
-    $('testUi').classList.remove('hidden');
+    if(session){ await verifyAdmin(); return; }
+    $('authStatus').innerHTML='<strong>Safari saknar CBO-session.</strong><br>Logga in nedan för just detta test.';
+    $('loginCard').classList.remove('hidden');
   }catch(e){
     $('authStatus').innerHTML=`<span class="status-err">Åtkomst nekad</span><br>${escapeHtml(e?.message||String(e))}`;
   }
 }
 
-function escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=()=>reject(new Error('Kunde inte läsa '+file.name));r.onload=()=>{const s=String(r.result||'');resolve(s.includes(',')?s.split(',')[1]:s)};r.readAsDataURL(file)});}
-function renderImages(){
-  const host=$('images');host.innerHTML='';
-  selectedFiles.forEach((f,i)=>{const url=URL.createObjectURL(f);const d=document.createElement('div');d.className='image-card';d.innerHTML=`<div class="sub"><strong>Bild ${i+1}</strong> · ${escapeHtml(f.name)}</div><img src="${url}" alt="GameBook-bild ${i+1}">`;host.appendChild(d)});
-  $('parseBtn').disabled=!selectedFiles.length;$('clearBtn').disabled=!selectedFiles.length;
-}
-function mergeRows(rows){
-  const map=new Map(mergedRows.map(r=>[norm(r.name),{...r}]));
-  for(const r of rows){const key=norm(r.name);if(!key)continue;const old=map.get(key)||{};map.set(key,{name:String(r.name||old.name||'').trim(),shcp:Number.isFinite(Number(r.shcp))?Number(r.shcp):old.shcp,net:Number.isFinite(Number(r.net))?Number(r.net):old.net});}
-  mergedRows=[...map.values()];
-}
-async function parseAll(){
-  if(!selectedFiles.length)return;
-  mergedRows=[];$('reviewCard').classList.add('hidden');$('parseBtn').disabled=true;$('parseStatus').classList.remove('hidden');
+async function loginForTest(){
+  $('loginError').classList.add('hidden');
+  const golf=normalizeGolf($('golfId').value);
+  const code=$('cboCode').value||'';
+  if(golf.length!==9||code.length<8){
+    $('loginError').innerHTML='<span class="status-err">Kontrollera Golf-ID och CBO-kod.</span>';$('loginError').classList.remove('hidden');return;
+  }
+  $('loginBtn').disabled=true;
   try{
-    for(let i=0;i<selectedFiles.length;i++){
-      const f=selectedFiles[i];$('parseStatus').innerHTML=`Tolkar bild ${i+1} av ${selectedFiles.length}: <strong>${escapeHtml(f.name)}</strong>…`;
-      const image=await fileToBase64(f);
-      const {data,error}=await sb.functions.invoke('parse-gamebook',{body:{image,mime:f.type||'image/jpeg'}});
-      if(error)throw new Error(error.message||'GameBook-tolkningen misslyckades.');
-      if(!data?.ok)throw new Error(data?.error||'GameBook-tolkningen misslyckades.');
-      mergeRows(Array.isArray(data.players)?data.players:[]);
-    }
-    $('parseStatus').innerHTML=`<span class="status-ok">✓ Tolkning klar.</span><br>${selectedFiles.length} bilder → ${mergedRows.length} unika spelare.`;
-    renderReview();
-  }catch(e){$('parseStatus').innerHTML=`<span class="status-err">Tolkningsfel.</span><br>${escapeHtml(e?.message||String(e))}`;}
-  finally{$('parseBtn').disabled=!selectedFiles.length;}
+    const {error}=await sb.auth.signInWithPassword({email:`${golf}@cbo.local`,password:code});
+    if(error) throw new Error('Fel Golf-ID eller CBO-kod.');
+    await verifyAdmin();
+    $('cboCode').value='';
+  }catch(e){
+    try{await sb.auth.signOut()}catch(_){}
+    $('loginError').innerHTML=`<span class="status-err">${escapeHtml(e?.message||String(e))}</span>`;$('loginError').classList.remove('hidden');
+  }finally{$('loginBtn').disabled=false;}
 }
-function renderReview(){
-  const host=$('reviewRows');
-  host.innerHTML=mergedRows.map((r,i)=>`<div class="row"><label>Spelare<input data-i="${i}" data-k="name" value="${escapeHtml(r.name)}"></label><label>HCP<input data-i="${i}" data-k="shcp" type="number" step="0.1" value="${Number.isFinite(Number(r.shcp))?r.shcp:''}"></label><label>Resultat<input data-i="${i}" data-k="net" type="number" step="1" value="${Number.isFinite(Number(r.net))?r.net:''}"></label></div>`).join('');
-  const metric=$('primaryMetric').value;
-  $('summary').innerHTML=`<strong>Belek 2019 · R1</strong><br>Primär resultattyp: ${metric==='stroke_net'?'Slagspel NET':metric==='stableford_net'?'Poängbogey NET':'inte vald ännu'}<br>${mergedRows.length} unika spelare. <strong>Ingen data sparad.</strong>`;
-  $('reviewCard').classList.remove('hidden');
-}
+
+function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=()=>reject(new Error('Kunde inte läsa '+file.name));r.onload=()=>{const s=String(r.result||'');resolve(s.includes(',')?s.split(',')[1]:s)};r.readAsDataURL(file)});}
+function renderImages(){const host=$('images');host.innerHTML='';selectedFiles.forEach((f,i)=>{const url=URL.createObjectURL(f);const d=document.createElement('div');d.className='image-card';d.innerHTML=`<div class="sub"><strong>Bild ${i+1}</strong> · ${escapeHtml(f.name)}</div><img src="${url}" alt="GameBook-bild ${i+1}">`;host.appendChild(d)});$('parseBtn').disabled=!selectedFiles.length;$('clearBtn').disabled=!selectedFiles.length;}
+function mergeRows(rows){const map=new Map(mergedRows.map(r=>[norm(r.name),{...r}]));for(const r of rows){const key=norm(r.name);if(!key)continue;const old=map.get(key)||{};map.set(key,{name:String(r.name||old.name||'').trim(),shcp:Number.isFinite(Number(r.shcp))?Number(r.shcp):old.shcp,net:Number.isFinite(Number(r.net))?Number(r.net):old.net});}mergedRows=[...map.values()];}
+async function parseAll(){if(!selectedFiles.length)return;mergedRows=[];$('reviewCard').classList.add('hidden');$('parseBtn').disabled=true;$('parseStatus').classList.remove('hidden');try{for(let i=0;i<selectedFiles.length;i++){const f=selectedFiles[i];$('parseStatus').innerHTML=`Tolkar bild ${i+1} av ${selectedFiles.length}: <strong>${escapeHtml(f.name)}</strong>…`;const image=await fileToBase64(f);const {data,error}=await sb.functions.invoke('parse-gamebook',{body:{image,mime:f.type||'image/jpeg'}});if(error)throw new Error(error.message||'GameBook-tolkningen misslyckades.');if(!data?.ok)throw new Error(data?.error||'GameBook-tolkningen misslyckades.');mergeRows(Array.isArray(data.players)?data.players:[]);} $('parseStatus').innerHTML=`<span class="status-ok">✓ Tolkning klar.</span><br>${selectedFiles.length} bilder → ${mergedRows.length} unika spelare.`;renderReview();}catch(e){$('parseStatus').innerHTML=`<span class="status-err">Tolkningsfel.</span><br>${escapeHtml(e?.message||String(e))}`;}finally{$('parseBtn').disabled=!selectedFiles.length;}}
+function renderReview(){const host=$('reviewRows');host.innerHTML=mergedRows.map((r,i)=>`<div class="row"><label>Spelare<input data-i="${i}" data-k="name" value="${escapeHtml(r.name)}"></label><label>HCP<input data-i="${i}" data-k="shcp" type="number" step="0.1" value="${Number.isFinite(Number(r.shcp))?r.shcp:''}"></label><label>Resultat<input data-i="${i}" data-k="net" type="number" step="1" value="${Number.isFinite(Number(r.net))?r.net:''}"></label></div>`).join('');const metric=$('primaryMetric').value;$('summary').innerHTML=`<strong>Belek 2019 · R1</strong><br>Primär resultattyp: ${metric==='stroke_net'?'Slagspel NET':metric==='stableford_net'?'Poängbogey NET':'inte vald ännu'}<br>${mergedRows.length} unika spelare. <strong>Ingen data sparad.</strong>`;$('reviewCard').classList.remove('hidden');}
+$('loginBtn').addEventListener('click',loginForTest);
 $('files').addEventListener('change',e=>{selectedFiles=[...(e.target.files||[])];mergedRows=[];$('reviewCard').classList.add('hidden');$('parseStatus').classList.add('hidden');renderImages();});
 $('parseBtn').addEventListener('click',parseAll);
 $('clearBtn').addEventListener('click',()=>{selectedFiles=[];mergedRows=[];$('files').value='';$('images').innerHTML='';$('parseStatus').classList.add('hidden');$('reviewCard').classList.add('hidden');$('parseBtn').disabled=true;$('clearBtn').disabled=true;});
