@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123b2d">
+<title>CBO – On Tour importtest</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+:root{--g:#123b2d;--g2:#1e5a40;--g3:#456f55;--cream:#f2ead9;--paper:#fffaf0;--gold:#b6924a;--ink:#273129;--muted:#716b60;--line:#d8c9aa;--tour:#2c7773}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;color:var(--ink)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:var(--cream);padding:18px}
+.app{max-width:720px;margin:auto}.card{background:var(--paper);border:1px solid #bca87966;border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 8px 20px #40351e12}
+h1,h2,h3{font-family:Futura,"Century Gothic","Avenir Next",Arial,sans-serif;text-transform:uppercase;letter-spacing:.055em}h1{font-size:23px;margin:0 0 6px}h2{font-size:16px;margin:0 0 10px}
+.kicker{font-size:10px;color:var(--tour);font-weight:900;text-transform:uppercase;letter-spacing:.11em}.sub{font-size:12px;color:var(--muted);line-height:1.45}.notice{font-size:12px;background:#e8efe6;border-radius:11px;padding:10px;line-height:1.4;margin-top:10px}
+label{display:block;font-size:11px;color:var(--muted);font-weight:800;margin:9px 0 5px;text-transform:uppercase;letter-spacing:.04em}input,select{width:100%;border:1px solid #c9b88e;border-radius:11px;padding:11px;background:#fffaf0;color:var(--ink);font-size:15px}.primary,.secondary{width:100%;padding:12px;border-radius:11px;font-weight:850;font-size:14px;margin-top:10px;cursor:pointer}.primary{background:var(--tour);color:#fff;border:1px solid #205e5a}.secondary{background:#fffaf0;color:var(--g);border:1px solid var(--g)}.primary:disabled,.secondary:disabled{opacity:.45;cursor:not-allowed}.hidden{display:none!important}.image-card{border:1px solid #d8c9aa;border-radius:14px;padding:9px;margin-top:10px}.image-card img{width:100%;max-height:420px;object-fit:contain;border-radius:10px;background:#162b25}.row{display:grid;grid-template-columns:1.7fr .55fr .55fr;gap:8px;padding:9px 0;border-top:1px solid #e8dfce}.row:first-child{border-top:0}.row label{margin:0}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.status-ok{color:#17643a;font-weight:800}.status-err{color:#842029;font-weight:800}.badge{display:inline-block;font-size:10px;border-radius:999px;padding:5px 8px;background:#dcebea;color:#205e5a;font-weight:900}
+@media(max-width:560px){body{padding:10px}.row{grid-template-columns:1fr 72px 72px}.actions{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="card">
+    <div class="kicker">Dold adminprototyp · On Tour</div>
+    <h1>GameBook-importtest</h1>
+    <div class="sub">Endast test av bild → server-side parse-gamebook → sammanslagen granskningslista. Ingen On Tour-data publiceras från denna sida.</div>
+    <div id="authStatus" class="notice">Verifierar CBO-admin…</div>
+  </div>
+
+  <div id="testUi" class="hidden">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h2>Belek 2019 · R1</h2><span class="badge">TEST</span></div>
+      <div class="sub">Testevent: Belek 2019. Välj exakt de två GameBook-bilderna för R1. Flera bilder hör till samma rond och slås ihop före granskning.</div>
+      <label>Primär resultattyp</label>
+      <select id="primaryMetric">
+        <option value="">Välj efter GameBook-bilden</option>
+        <option value="stroke_net">Slagspel NET</option>
+        <option value="stableford_net">Poängbogey NET</option>
+      </select>
+      <div class="sub" style="margin-top:5px">Välj den tävlingsform som ligger längst till vänster överst i GameBook. Vi gissar inte historisk ordning.</div>
+      <label class="primary" style="display:block;text-align:center;cursor:pointer">VÄLJ GAMEBOOK-BILDER<input id="files" type="file" accept="image/*" multiple style="display:none"></label>
+      <div class="actions">
+        <button id="parseBtn" class="primary" type="button" disabled>Tolka bilderna</button>
+        <button id="clearBtn" class="secondary" type="button" disabled>Rensa</button>
+      </div>
+      <div id="parseStatus" class="notice hidden"></div>
+      <div id="images"></div>
+    </div>
+
+    <div id="reviewCard" class="card hidden">
+      <h2>Granskningslista</h2>
+      <div class="sub">Kontrollera varje rad mot originalbilderna. Ändringar här sparas inte i databasen.</div>
+      <div id="reviewRows"></div>
+      <div id="summary" class="notice"></div>
+    </div>
+  </div>
+</div>
+<script>
+let sb=null;
+let selectedFiles=[];
+let mergedRows=[];
+
+const $=id=>document.getElementById(id);
+const norm=s=>String(s||'').trim().toLocaleLowerCase('sv-SE').replace(/\s+/g,' ');
+
+async function boot(){
+  try{
+    if(!window.CBO_SUPABASE_URL||!window.CBO_SUPABASE_PUBLISHABLE_KEY||!window.supabase?.createClient) throw new Error('Supabase-konfiguration saknas.');
+    sb=window.supabase.createClient(window.CBO_SUPABASE_URL,window.CBO_SUPABASE_PUBLISHABLE_KEY);
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session) throw new Error('Du måste först logga in i CBO-appen i samma webbläsare.');
+    const {data,error}=await sb.rpc('cbo_current_player');
+    if(error) throw error;
+    const p=Array.isArray(data)?data[0]:data;
+    if(!p||p.is_admin!==true) throw new Error('Endast verifierad CBO-admin får använda testet.');
+    $('authStatus').innerHTML=`<span class="status-ok">✓ Admin verifierad: ${escapeHtml(p.name||'')}</span><br>Ingen publiceringsfunktion är aktiverad på testsidan.`;
+    $('testUi').classList.remove('hidden');
+  }catch(e){
+    $('authStatus').innerHTML=`<span class="status-err">Åtkomst nekad</span><br>${escapeHtml(e?.message||String(e))}`;
+  }
+}
+
+function escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=()=>reject(new Error('Kunde inte läsa '+file.name));r.onload=()=>{const s=String(r.result||'');resolve(s.includes(',')?s.split(',')[1]:s)};r.readAsDataURL(file)});}
+function renderImages(){
+  const host=$('images');host.innerHTML='';
+  selectedFiles.forEach((f,i)=>{const url=URL.createObjectURL(f);const d=document.createElement('div');d.className='image-card';d.innerHTML=`<div class="sub"><strong>Bild ${i+1}</strong> · ${escapeHtml(f.name)}</div><img src="${url}" alt="GameBook-bild ${i+1}">`;host.appendChild(d)});
+  $('parseBtn').disabled=!selectedFiles.length;$('clearBtn').disabled=!selectedFiles.length;
+}
+function mergeRows(rows){
+  const map=new Map(mergedRows.map(r=>[norm(r.name),{...r}]));
+  for(const r of rows){const key=norm(r.name);if(!key)continue;const old=map.get(key)||{};map.set(key,{name:String(r.name||old.name||'').trim(),shcp:Number.isFinite(Number(r.shcp))?Number(r.shcp):old.shcp,net:Number.isFinite(Number(r.net))?Number(r.net):old.net});}
+  mergedRows=[...map.values()];
+}
+async function parseAll(){
+  if(!selectedFiles.length)return;
+  mergedRows=[];$('reviewCard').classList.add('hidden');$('parseBtn').disabled=true;$('parseStatus').classList.remove('hidden');
+  try{
+    for(let i=0;i<selectedFiles.length;i++){
+      const f=selectedFiles[i];$('parseStatus').innerHTML=`Tolkar bild ${i+1} av ${selectedFiles.length}: <strong>${escapeHtml(f.name)}</strong>…`;
+      const image=await fileToBase64(f);
+      const {data,error}=await sb.functions.invoke('parse-gamebook',{body:{image,mime:f.type||'image/jpeg'}});
+      if(error)throw new Error(error.message||'GameBook-tolkningen misslyckades.');
+      if(!data?.ok)throw new Error(data?.error||'GameBook-tolkningen misslyckades.');
+      mergeRows(Array.isArray(data.players)?data.players:[]);
+    }
+    $('parseStatus').innerHTML=`<span class="status-ok">✓ Tolkning klar.</span><br>${selectedFiles.length} bilder → ${mergedRows.length} unika spelare.`;
+    renderReview();
+  }catch(e){$('parseStatus').innerHTML=`<span class="status-err">Tolkningsfel.</span><br>${escapeHtml(e?.message||String(e))}`;}
+  finally{$('parseBtn').disabled=!selectedFiles.length;}
+}
+function renderReview(){
+  const host=$('reviewRows');
+  host.innerHTML=mergedRows.map((r,i)=>`<div class="row"><label>Spelare<input data-i="${i}" data-k="name" value="${escapeHtml(r.name)}"></label><label>HCP<input data-i="${i}" data-k="shcp" type="number" step="0.1" value="${Number.isFinite(Number(r.shcp))?r.shcp:''}"></label><label>Resultat<input data-i="${i}" data-k="net" type="number" step="1" value="${Number.isFinite(Number(r.net))?r.net:''}"></label></div>`).join('');
+  const metric=$('primaryMetric').value;
+  $('summary').innerHTML=`<strong>Belek 2019 · R1</strong><br>Primär resultattyp: ${metric==='stroke_net'?'Slagspel NET':metric==='stableford_net'?'Poängbogey NET':'inte vald ännu'}<br>${mergedRows.length} unika spelare. <strong>Ingen data sparad.</strong>`;
+  $('reviewCard').classList.remove('hidden');
+}
+$('files').addEventListener('change',e=>{selectedFiles=[...(e.target.files||[])];mergedRows=[];$('reviewCard').classList.add('hidden');$('parseStatus').classList.add('hidden');renderImages();});
+$('parseBtn').addEventListener('click',parseAll);
+$('clearBtn').addEventListener('click',()=>{selectedFiles=[];mergedRows=[];$('files').value='';$('images').innerHTML='';$('parseStatus').classList.add('hidden');$('reviewCard').classList.add('hidden');$('parseBtn').disabled=true;$('clearBtn').disabled=true;});
+$('primaryMetric').addEventListener('change',()=>{if(mergedRows.length)renderReview();});
+boot();
+</script>
+</body>
+</html>
