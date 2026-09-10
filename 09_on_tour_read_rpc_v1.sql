@@ -107,6 +107,7 @@ begin
                 'source', x.source,
                 'source_ref', x.source_ref
               ) order by x.metric, x.segment, x.displayed_position nulls last, lower(x.participant_name)
+            )
             from public.cbo_tour_results x
             where x.round_id = r.id
           ), '[]'::jsonb),
@@ -124,6 +125,7 @@ begin
                 'note', s.note,
                 'source', s.source
               ) order by s.contest_type, s.hole nulls last, s.placement nulls last, lower(s.participant_name)
+            )
             from public.cbo_tour_side_contests s
             where s.round_id = r.id
           ), '[]'::jsonb)
