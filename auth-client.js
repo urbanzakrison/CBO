@@ -12,13 +12,7 @@
     const el = $('loginError'); if (!el) return;
     el.textContent = msg; el.classList.toggle('show', !!msg);
   };
-  const normalizeLoginId = (v) => {
-    const raw=String(v||'').trim();
-    const digits=raw.replace(/\D/g,'');
-    if (digits.length===9) return digits;
-    const alias=raw.toLowerCase();
-    return /^[a-z0-9._-]{3,32}$/.test(alias) ? alias : '';
-  };
+  const normalizeGolf = (v) => String(v || '').replace(/\D/g, '').slice(0, 9);
 
   function configOk(){
     return window.CBO_SUPABASE_URL && !String(window.CBO_SUPABASE_URL).includes('PASTE_') &&
@@ -74,11 +68,11 @@
   window.cboLogin = async function(){
     showLoginError('');
     if (!sb) { showLoginError('Supabase är inte konfigurerat i config.js.'); return; }
-    const loginId = normalizeLoginId($('loginGolfId')?.value);
+    const golf = normalizeGolf($('loginGolfId')?.value);
     const code = $('loginCode')?.value || '';
-    if (!loginId || code.length < 8) { showLoginError('Kontrollera Golf-ID/profil och CBO-kod.'); return; }
+    if (golf.length !== 9 || code.length < 8) { showLoginError('Kontrollera Golf-ID och CBO-kod.'); return; }
     status('SUPABASE · LOGGAR IN', 'wait');
-    const email = `${loginId}@cbo.local`;
+    const email = `${golf}@cbo.local`;
     const { error } = await sb.auth.signInWithPassword({ email, password: code });
     if (error) {
       status('SUPABASE · INLOGGNING MISSLYCKADES', 'err');
