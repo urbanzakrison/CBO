@@ -24,12 +24,12 @@
   </div>
 </div>
 <script>
-let sb,feed=[]; const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let sb,feed=[]; const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 const metricLabel=m=>({stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'})[m]||m||'Resultat';
 const fmtDate=d=>{if(!d)return 'Datum saknas'; const [y,m,day]=String(d).split('-'); return `${Number(day)}.${Number(m)}.${y}`};
 const ng=v=>String(v||'').replace(/\D/g,'').slice(0,9);
 function showLogin(msg='Logga in nedan.'){$('authStatus').textContent=msg;$('loginCard').classList.remove('hidden');$('feedView').classList.add('hidden');$('detailView').classList.add('hidden')}
-async function member(){const {data,error}=await sb.rpc('cbo_current_player'); if(error)throw error; const p=Array.isArray(data)?data[0]:data; if(!p?.id)throw new Error('Aktivt CBO-medlemskap krävs.'); return p}
+async function member(){const {data,error}=await sb.rpc('cbo_current_player'); if(error)throw error; const p=Array.isArray(data)?data[0]:data; if(!p?.player_id)throw new Error('Aktivt CBO-medlemskap krävs.'); return p}
 async function loadFeed(){const {data,error}=await sb.rpc('cbo_tour_events_feed'); if(error)throw error; feed=data||[]; $('events').innerHTML=feed.length?feed.map(e=>`<div class="event" data-id="${esc(e.id)}"><div class="event-head"><div class="event-main"><div class="event-name">${esc(e.name)}</div><div class="event-meta">${esc(e.event_year)} · ${esc(e.location||'')} · ${esc(e.round_count)} rundor</div></div><div class="tour-badge">ON TOUR</div></div><div class="winner">🏆 <strong>${esc(e.winner_name||'Vinnare saknas')}</strong></div></div>`).join(''):'<div class="empty">Inga On Tour-event hittades.</div>'; document.querySelectorAll('.event').forEach(el=>el.onclick=()=>openEvent(el.dataset.id))}
 async function verify(){const p=await member(); $('authStatus').innerHTML=`<span class="ok">✓ Medlem verifierad: ${esc(p.name||'')}</span>`; $('loginCard').classList.add('hidden'); await loadFeed(); $('feedView').classList.remove('hidden')}
 async function boot(){sb=window.supabase.createClient(window.CBO_SUPABASE_URL,window.CBO_SUPABASE_PUBLISHABLE_KEY); const {data:{session}}=await sb.auth.getSession(); if(!session){showLogin();return} try{await verify()}catch(e){showLogin(e.message||String(e))}}
