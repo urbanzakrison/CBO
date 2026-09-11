@@ -394,12 +394,36 @@ button{cursor:pointer}
 
    <div id="onTourAdminPanel" class="card hidden" style="border-left:5px solid #2c7773">
     <div class="cardhead"><div><h2>On Tour</h2><div class="sub">Separat importflöde för golfresor och tävlingar utanför ordinarie CBO-serie.</div></div><span class="badge" style="background:#dcefed;color:#165d59">ON TOUR</span></div>
-    <label for="onTourAdminEventSelect">Event</label>
-    <select id="onTourAdminEventSelect" disabled>
-      <option value="">Välj On Tour-event…</option>
+
+    <label for="onTourEventMode">Event</label>
+    <select id="onTourEventMode" onchange="cboAdminTourEventModeChanged(this.value)">
+      <option value="new" selected>Nytt event</option>
+      <option value="existing">Befintligt event</option>
     </select>
-    <div id="onTourAdminEventStatus" class="notice" style="margin-top:10px"><strong>Event hämtas först när On Tour väljs.</strong><br>Listan läses via CBO:s befintliga On Tour-RPC och skriver ingen data.</div>
-    <div class="notice" style="margin-top:10px"><strong>Nästa steg:</strong><br>När eventvalet är verifierat kopplas separat runda, bildtolkning och publicering på här. Den ordinarie CBO-importen påverkas inte.</div>
+
+    <div id="onTourNewEventFields">
+      <label for="onTourNewEventName">Eventnamn</label>
+      <input id="onTourNewEventName" type="text" maxlength="120" placeholder="Exempel: Marbella Tour 2027">
+      <label for="onTourNewEventYear">År</label>
+      <input id="onTourNewEventYear" type="number" min="1900" max="2200">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label for="onTourNewEventStart">Startdatum</label><input id="onTourNewEventStart" type="date"></div>
+        <div><label for="onTourNewEventEnd">Slutdatum</label><input id="onTourNewEventEnd" type="date"></div>
+      </div>
+      <label for="onTourNewEventLocation">Plats</label>
+      <input id="onTourNewEventLocation" type="text" maxlength="160" placeholder="Valfritt">
+      <button id="onTourCreateEventBtn" class="primary" type="button" onclick="cboAdminCreateTourEvent()">Skapa On Tour-event</button>
+    </div>
+
+    <div id="onTourExistingEventFields" class="hidden">
+      <label for="onTourAdminEventSelect">Befintligt event</label>
+      <select id="onTourAdminEventSelect" disabled>
+        <option value="">Välj On Tour-event…</option>
+      </select>
+    </div>
+
+    <div id="onTourAdminEventStatus" class="notice" style="margin-top:10px"><strong>Nytt event är standard.</strong><br>Skapa eventet först. Därefter lägger vi en eller flera rundor under samma event.</div>
+    <div class="notice" style="margin-top:10px"><strong>Skyddad separation:</strong><br>On Tour använder endast cbo_tour_* och påverkar inte CBO-poäng, närvaro, statistik eller leaderboard.</div>
    </div>
 
    <div class="card">
@@ -2420,43 +2444,81 @@ window.addEventListener('load',()=>{
 
 <script id="onTourAdminDestinationScript">
 let CBO_TOUR_ADMIN_EVENTS_LOADED=false;
+let CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
 
-async function cboAdminLoadTourEvents(){
-  const select=document.getElementById('onTourAdminEventSelect');
+function cboAdminTourSetStatus(html){
   const status=document.getElementById('onTourAdminEventStatus');
-  if(!select||!status)return;
-  if(CBO_TOUR_ADMIN_EVENTS_LOADED)return;
-  if(!window.CBO_SUPABASE_CLIENT){
-    status.innerHTML='<strong>Kan inte hämta event.</strong><br>Supabase-klienten saknas.';
-    return;
+  if(status)status.innerHTML=html;
+}
+
+function cboAdminTourEventModeChanged(value){
+  const mode=value==='existing'?'existing':'new';
+  document.getElementById('onTourNewEventFields')?.classList.toggle('hidden',mode!=='new');
+  document.getElementById('onTourExistingEventFields')?.classList.toggle('hidden',mode!=='existing');
+  CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
+  if(mode==='existing'){
+    cboAdminTourSetStatus('<strong>Befintligt event valt.</strong><br>Använd detta bara för att lägga till fler rundor i ett redan skapat event eller för historisk komplettering.');
+    cboAdminLoadTourEvents();
+  }else{
+    cboAdminTourSetStatus('<strong>Nytt event är standard.</strong><br>Skapa eventet först. Därefter lägger vi en eller flera rundor under samma event.');
   }
+}
+
+async function cboAdminLoadTourEvents(force=false){
+  const select=document.getElementById('onTourAdminEventSelect');
+  if(!select)return;
+  if(CBO_TOUR_ADMIN_EVENTS_LOADED&&!force)return;
+  if(!window.CBO_SUPABASE_CLIENT){cboAdminTourSetStatus('<strong>Kan inte hämta event.</strong><br>Supabase-klienten saknas.');return;}
   select.disabled=true;
-  status.innerHTML='<strong>Hämtar On Tour-event…</strong>';
+  cboAdminTourSetStatus('<strong>Hämtar On Tour-event…</strong>');
   try{
     const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_tour_events_feed');
     if(error)throw error;
     const rows=Array.isArray(data)?data:[];
     select.replaceChildren();
-    const first=document.createElement('option');
-    first.value='';
-    first.textContent='Välj On Tour-event…';
-    select.appendChild(first);
-    rows.forEach(e=>{
-      const opt=document.createElement('option');
-      opt.value=String(e.id||'');
-      const year=e.event_year?` · ${e.event_year}`:'';
-      opt.textContent=`${e.name||'On Tour-event'}${year}`;
-      select.appendChild(opt);
-    });
+    const first=document.createElement('option');first.value='';first.textContent='Välj On Tour-event…';select.appendChild(first);
+    rows.forEach(e=>{const opt=document.createElement('option');opt.value=String(e.id||'');opt.textContent=`${e.name||'On Tour-event'}${e.event_year?` · ${e.event_year}`:''}`;select.appendChild(opt);});
     select.disabled=rows.length===0;
     CBO_TOUR_ADMIN_EVENTS_LOADED=true;
-    status.innerHTML=rows.length
-      ? `<strong>${rows.length} event hittades.</strong><br>Välj event för nästa On Tour-runda.`
-      : '<strong>Inga On Tour-event hittades.</strong>';
+    cboAdminTourSetStatus(rows.length?`<strong>${rows.length} event hittades.</strong><br>Välj bara ett tidigare event om nästa runda faktiskt hör till det.`:'<strong>Inga tidigare On Tour-event hittades.</strong>');
   }catch(e){
     select.disabled=true;
-    status.innerHTML=`<strong>Event kunde inte hämtas.</strong><br>${String(e?.message||e)}`;
+    cboAdminTourSetStatus(`<strong>Event kunde inte hämtas.</strong><br>${String(e?.message||e)}`);
   }
+}
+
+async function cboAdminCreateTourEvent(){
+  const btn=document.getElementById('onTourCreateEventBtn');
+  const name=(document.getElementById('onTourNewEventName')?.value||'').trim();
+  const year=Number(document.getElementById('onTourNewEventYear')?.value);
+  const starts=document.getElementById('onTourNewEventStart')?.value||null;
+  const ends=document.getElementById('onTourNewEventEnd')?.value||null;
+  const location=(document.getElementById('onTourNewEventLocation')?.value||'').trim()||null;
+  if(!name){cboAdminTourSetStatus('<strong>Eventnamn saknas.</strong>');return;}
+  if(!Number.isInteger(year)||year<1900||year>2200){cboAdminTourSetStatus('<strong>Kontrollera eventåret.</strong>');return;}
+  if(starts&&Number(starts.slice(0,4))!==year){cboAdminTourSetStatus('<strong>Startdatum och eventår måste vara samma år.</strong>');return;}
+  if(ends&&Number(ends.slice(0,4))!==year){cboAdminTourSetStatus('<strong>Slutdatum och eventår måste vara samma år.</strong>');return;}
+  if(starts&&ends&&ends<starts){cboAdminTourSetStatus('<strong>Slutdatum kan inte vara före startdatum.</strong>');return;}
+  if(!window.CBO_SUPABASE_CLIENT){cboAdminTourSetStatus('<strong>Supabase-klienten saknas.</strong>');return;}
+  if(btn)btn.disabled=true;
+  cboAdminTourSetStatus('<strong>Skapar On Tour-event…</strong>');
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_tour_admin_create_event',{p_name:name,p_event_year:year,p_starts_on:starts,p_ends_on:ends,p_location:location,p_notes:null});
+    if(error)throw error;
+    if(!data?.ok)throw new Error(data?.error||'Eventet kunde inte skapas.');
+    if(data.reused===true){
+      CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
+      cboAdminTourSetStatus('<strong>Ett event med samma namn och år finns redan.</strong><br>Inget nytt event skapades. Välj Befintligt event eller ändra namn/år.');
+      CBO_TOUR_ADMIN_EVENTS_LOADED=false;
+      return;
+    }
+    CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=String(data.event_id||'');
+    CBO_TOUR_ADMIN_EVENTS_LOADED=false;
+    cboAdminTourSetStatus(`<strong>Event skapat ✓</strong><br>${name} · ${year}. Nästa steg är att skapa Runda 1 under detta event.`);
+  }catch(e){
+    CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
+    cboAdminTourSetStatus(`<strong>Event kunde inte skapas.</strong><br>${String(e?.message||e)}`);
+  }finally{if(btn)btn.disabled=false;}
 }
 
 function cboAdminImportDestinationChanged(value){
@@ -2469,10 +2531,14 @@ function cboAdminImportDestinationChanged(value){
   if(cboCard)cboCard.classList.toggle('hidden',selected==='tour');
   if(help){
     help.innerHTML=selected==='tour'
-      ? '<strong>On Tour valt.</strong><br>On Tour får ett separat import- och publiceringsflöde. Ingen CBO-data skrivs från den grenen.'
+      ? '<strong>On Tour valt.</strong><br>Nytt event är standard. On Tour har separat import- och publiceringsflöde och skriver ingen CBO-data.'
       : '<strong>CBO-omgång är förvald.</strong><br>Den befintliga CBO-importen och publiceringen används oförändrad.';
   }
-  if(selected==='tour')cboAdminLoadTourEvents();
+  if(selected==='tour'){
+    const yearInput=document.getElementById('onTourNewEventYear');
+    if(yearInput&&!yearInput.value)yearInput.value=String(new Date().getFullYear());
+    cboAdminTourEventModeChanged(document.getElementById('onTourEventMode')?.value||'new');
+  }
 }
 </script>
 </body></html>
