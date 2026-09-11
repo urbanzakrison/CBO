@@ -1,0 +1,56 @@
+name: One-time login alias keyboard fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-login-alias-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-login:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch login input and auth safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old='<label>Golf-ID</label><input id="loginGolfId" inputmode="numeric" autocomplete="username" placeholder="XXXXXX-XXX" maxlength="10">'
+          new='<label>Golf-ID / profil</label><input id="loginGolfId" inputmode="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Golf-ID eller profil" maxlength="32">'
+          if s.count(old)!=1:
+              raise SystemExit(f'Expected one login input marker, found {s.count(old)}')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('auth-client.js')
+          s=p.read_text(encoding='utf-8')
+          old="  const normalizeGolf = (v) => String(v || '').replace(/\\D/g, '').slice(0, 9);"
+          new="  const normalizeLoginId = (v) => {\n    const raw=String(v||'').trim();\n    const digits=raw.replace(/\\D/g,'');\n    if (digits.length===9) return digits;\n    const alias=raw.toLowerCase();\n    return /^[a-z0-9._-]{3,32}$/.test(alias) ? alias : '';\n  };"
+          if s.count(old)!=1:
+              raise SystemExit('normalizeGolf marker missing or duplicated')
+          s=s.replace(old,new,1)
+          old="    const golf = normalizeGolf($('loginGolfId')?.value);\n    const code = $('loginCode')?.value || '';\n    if (golf.length !== 9 || code.length < 8) { showLoginError('Kontrollera Golf-ID och CBO-kod.'); return; }\n    status('SUPABASE · LOGGAR IN', 'wait');\n    const email = `${golf}@cbo.local`;"
+          new="    const loginId = normalizeLoginId($('loginGolfId')?.value);\n    const code = $('loginCode')?.value || '';\n    if (!loginId || code.length < 8) { showLoginError('Kontrollera Golf-ID/profil och CBO-kod.'); return; }\n    status('SUPABASE · LOGGAR IN', 'wait');\n    const email = `${loginId}@cbo.local`;"
+          if s.count(old)!=1:
+              raise SystemExit('Login block marker missing or duplicated')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit isolated login fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html auth-client.js
+          git commit -m "Allow profile aliases on login"
+          git push origin HEAD:main
