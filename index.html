@@ -644,6 +644,10 @@ function showPage(id,btn){
    const frame=document.getElementById('onTourMemberFrame');
    if(frame&&!frame.dataset.loaded){frame.src=frame.dataset.src;frame.dataset.loaded='1';}
  }
+ // CBO 4.6.x page-open refresh: render data-dependent views when actually opened.
+ // This avoids a stale/empty first render if live/auth data became ready after initial renderAll().
+ if(id==='rounds') renderRounds();
+ if(id==='statistics') cboLoadSeasonStats().catch(()=>{});
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));
  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b===(btn||document.querySelector(`.nav button[data-page="${id}"]`))));
  if(id==='admin') setupAdmin();
