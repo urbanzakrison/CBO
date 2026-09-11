@@ -423,6 +423,36 @@ button{cursor:pointer}
     </div>
 
     <div id="onTourAdminEventStatus" class="notice" style="margin-top:10px"><strong>Nytt event är standard.</strong><br>Skapa eventet först. Därefter lägger vi en eller flera rundor under samma event.</div>
+
+    <div id="onTourRoundDraftFields" class="hidden" style="margin-top:14px;padding-top:12px;border-top:1px solid #d8c9aa">
+      <div class="cardhead"><div><h3 style="margin:0">Ny On Tour-runda</h3><div id="onTourRoundEventLabel" class="sub">Aktivt event</div></div><span class="badge" style="background:#dcefed;color:#165d59">RUNDA</span></div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:8px">
+        <div><label for="onTourRoundNo">Runda</label><input id="onTourRoundNo" type="number" min="1" value="1"></div>
+        <div><label for="onTourRoundDate">Datum</label><input id="onTourRoundDate" type="date"></div>
+      </div>
+      <label for="onTourRoundCourse">Bana</label>
+      <input id="onTourRoundCourse" type="text" maxlength="160" placeholder="Golfbana">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label for="onTourRoundHoles">Hål</label><select id="onTourRoundHoles"><option value="18" selected>18 hål</option><option value="9">9 hål</option></select></div>
+        <div><label for="onTourRoundType">Rondtyp</label><select id="onTourRoundType" onchange="cboAdminTourRoundTypeChanged(this.value)"><option value="individual" selected>Individuell</option><option value="scramble">Scramble</option><option value="team">Lag</option><option value="other">Övrig</option></select></div>
+      </div>
+      <div id="onTourPrimaryMetricWrap">
+        <label for="onTourPrimaryMetric">Primär tävlingsform</label>
+        <select id="onTourPrimaryMetric">
+          <option value="">Välj tävlingsform…</option>
+          <option value="stroke_net">Slagspel NET</option>
+          <option value="stableford_net">Poängbogey NET</option>
+          <option value="stroke_scr">Slagspel SCR</option>
+          <option value="stableford_scr">Poängbogey SCR</option>
+        </select>
+        <div class="sub" style="margin-top:5px">Vid GameBook-import ska primär tävlingsform stämma med den tävlingsform som ligger längst till vänster på resultatkortet.</div>
+      </div>
+      <label for="onTourRoundTitle">Rundnamn</label>
+      <input id="onTourRoundTitle" type="text" maxlength="120" placeholder="Valfritt, t.ex. Runda 1">
+      <button id="onTourPrepareRoundBtn" class="primary" type="button" onclick="cboAdminPrepareTourRound()">Förbered runda</button>
+      <div id="onTourRoundStatus" class="notice" style="margin-top:10px"><strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.</div>
+    </div>
+
     <div class="notice" style="margin-top:10px"><strong>Skyddad separation:</strong><br>On Tour använder endast cbo_tour_* och påverkar inte CBO-poäng, närvaro, statistik eller leaderboard.</div>
    </div>
 
@@ -2445,10 +2475,77 @@ window.addEventListener('load',()=>{
 <script id="onTourAdminDestinationScript">
 let CBO_TOUR_ADMIN_EVENTS_LOADED=false;
 let CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
+let CBO_TOUR_ADMIN_ACTIVE_EVENT_NAME=null;
+let CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR=null;
+let CBO_TOUR_ADMIN_ROUND_DRAFT=null;
 
 function cboAdminTourSetStatus(html){
   const status=document.getElementById('onTourAdminEventStatus');
   if(status)status.innerHTML=html;
+}
+
+function cboAdminTourResetRoundDraft(){
+  CBO_TOUR_ADMIN_ROUND_DRAFT=null;
+  document.getElementById('onTourRoundDraftFields')?.classList.add('hidden');
+  const status=document.getElementById('onTourRoundStatus');
+  if(status)status.innerHTML='<strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.';
+}
+
+function cboAdminTourActivateEvent(id,name,year,startDate=null){
+  CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=id?String(id):null;
+  CBO_TOUR_ADMIN_ACTIVE_EVENT_NAME=name||null;
+  CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR=Number(year)||null;
+  CBO_TOUR_ADMIN_ROUND_DRAFT=null;
+  const wrap=document.getElementById('onTourRoundDraftFields');
+  if(!CBO_TOUR_ADMIN_ACTIVE_EVENT_ID){wrap?.classList.add('hidden');return;}
+  wrap?.classList.remove('hidden');
+  const label=document.getElementById('onTourRoundEventLabel');
+  if(label)label.textContent=`${CBO_TOUR_ADMIN_ACTIVE_EVENT_NAME||'On Tour-event'}${CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR?` · ${CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR}`:''}`;
+  const roundNo=document.getElementById('onTourRoundNo');
+  if(roundNo)roundNo.value='1';
+  const roundDate=document.getElementById('onTourRoundDate');
+  if(roundDate)roundDate.value=startDate||'';
+  const title=document.getElementById('onTourRoundTitle');
+  if(title)title.value='';
+  const course=document.getElementById('onTourRoundCourse');
+  if(course)course.value='';
+  const holes=document.getElementById('onTourRoundHoles');
+  if(holes)holes.value='18';
+  const type=document.getElementById('onTourRoundType');
+  if(type)type.value='individual';
+  const metric=document.getElementById('onTourPrimaryMetric');
+  if(metric)metric.value='';
+  cboAdminTourRoundTypeChanged('individual');
+  const status=document.getElementById('onTourRoundStatus');
+  if(status)status.innerHTML='<strong>Runda 1 kan nu förberedas.</strong><br>Fyll i rundans uppgifter. Ingen rundpost skapas ännu.';
+}
+
+function cboAdminTourRoundTypeChanged(value){
+  const individual=value==='individual';
+  document.getElementById('onTourPrimaryMetricWrap')?.classList.toggle('hidden',!individual);
+  if(!individual){const metric=document.getElementById('onTourPrimaryMetric');if(metric)metric.value='';}
+}
+
+function cboAdminPrepareTourRound(){
+  const status=document.getElementById('onTourRoundStatus');
+  if(!CBO_TOUR_ADMIN_ACTIVE_EVENT_ID){if(status)status.innerHTML='<strong>Skapa eller välj event först.</strong>';return;}
+  const roundNo=Number(document.getElementById('onTourRoundNo')?.value);
+  const playedOn=document.getElementById('onTourRoundDate')?.value||'';
+  const course=(document.getElementById('onTourRoundCourse')?.value||'').trim();
+  const holes=Number(document.getElementById('onTourRoundHoles')?.value);
+  const roundType=document.getElementById('onTourRoundType')?.value||'individual';
+  const primaryMetric=document.getElementById('onTourPrimaryMetric')?.value||null;
+  const title=(document.getElementById('onTourRoundTitle')?.value||'').trim()||null;
+  if(!Number.isInteger(roundNo)||roundNo<1){if(status)status.innerHTML='<strong>Kontrollera rundnumret.</strong>';return;}
+  if(!playedOn){if(status)status.innerHTML='<strong>Datum saknas.</strong>';return;}
+  if(CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR&&Number(playedOn.slice(0,4))!==CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR){if(status)status.innerHTML='<strong>Rundans datum måste ligga samma år som eventet.</strong>';return;}
+  if(!course){if(status)status.innerHTML='<strong>Bana saknas.</strong>';return;}
+  if(![9,18].includes(holes)){if(status)status.innerHTML='<strong>Antal hål måste vara 9 eller 18.</strong>';return;}
+  if(!['individual','scramble','team','other'].includes(roundType)){if(status)status.innerHTML='<strong>Ogiltig rondtyp.</strong>';return;}
+  if(roundType==='individual'&&!['stroke_net','stableford_net','stroke_scr','stableford_scr'].includes(primaryMetric)){if(status)status.innerHTML='<strong>Välj primär tävlingsform.</strong>';return;}
+  CBO_TOUR_ADMIN_ROUND_DRAFT={event_id:CBO_TOUR_ADMIN_ACTIVE_EVENT_ID,round_no:roundNo,title,played_on:playedOn,course,holes,round_type:roundType,primary_metric:roundType==='individual'?primaryMetric:null};
+  const metricLabel={stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'}[primaryMetric]||'';
+  if(status)status.innerHTML=`<strong>Runda ${roundNo} förberedd ✓</strong><br>${playedOn} · ${course} · ${holes} hål${metricLabel?` · ${metricLabel}`:''}. Nästa steg är GameBook-bilder och granskning.`;
 }
 
 function cboAdminTourEventModeChanged(value){
@@ -2456,6 +2553,9 @@ function cboAdminTourEventModeChanged(value){
   document.getElementById('onTourNewEventFields')?.classList.toggle('hidden',mode!=='new');
   document.getElementById('onTourExistingEventFields')?.classList.toggle('hidden',mode!=='existing');
   CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
+  CBO_TOUR_ADMIN_ACTIVE_EVENT_NAME=null;
+  CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR=null;
+  cboAdminTourResetRoundDraft();
   if(mode==='existing'){
     cboAdminTourSetStatus('<strong>Befintligt event valt.</strong><br>Använd detta bara för att lägga till fler rundor i ett redan skapat event eller för historisk komplettering.');
     cboAdminLoadTourEvents();
@@ -2477,7 +2577,8 @@ async function cboAdminLoadTourEvents(force=false){
     const rows=Array.isArray(data)?data:[];
     select.replaceChildren();
     const first=document.createElement('option');first.value='';first.textContent='Välj On Tour-event…';select.appendChild(first);
-    rows.forEach(e=>{const opt=document.createElement('option');opt.value=String(e.id||'');opt.textContent=`${e.name||'On Tour-event'}${e.event_year?` · ${e.event_year}`:''}`;select.appendChild(opt);});
+    rows.forEach(e=>{const opt=document.createElement('option');opt.value=String(e.id||'');opt.dataset.name=e.name||'On Tour-event';opt.dataset.year=String(e.event_year||'');opt.dataset.start=e.starts_on||'';opt.textContent=`${e.name||'On Tour-event'}${e.event_year?` · ${e.event_year}`:''}`;select.appendChild(opt);});
+    select.onchange=()=>{const opt=select.selectedOptions?.[0];if(!opt?.value){cboAdminTourResetRoundDraft();CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;return;}cboAdminTourActivateEvent(opt.value,opt.dataset.name,Number(opt.dataset.year)||null,opt.dataset.start||null);cboAdminTourSetStatus(`<strong>Befintligt event valt ✓</strong><br>${opt.dataset.name}${opt.dataset.year?` · ${opt.dataset.year}`:''}. Lägg bara till en runda här om den hör till samma event.`);};
     select.disabled=rows.length===0;
     CBO_TOUR_ADMIN_EVENTS_LOADED=true;
     cboAdminTourSetStatus(rows.length?`<strong>${rows.length} event hittades.</strong><br>Välj bara ett tidigare event om nästa runda faktiskt hör till det.`:'<strong>Inga tidigare On Tour-event hittades.</strong>');
@@ -2512,9 +2613,9 @@ async function cboAdminCreateTourEvent(){
       CBO_TOUR_ADMIN_EVENTS_LOADED=false;
       return;
     }
-    CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=String(data.event_id||'');
     CBO_TOUR_ADMIN_EVENTS_LOADED=false;
-    cboAdminTourSetStatus(`<strong>Event skapat ✓</strong><br>${name} · ${year}. Nästa steg är att skapa Runda 1 under detta event.`);
+    cboAdminTourActivateEvent(String(data.event_id||''),name,year,starts);
+    cboAdminTourSetStatus(`<strong>Event skapat ✓</strong><br>${name} · ${year}. Fyll nu i Runda 1 nedan.`);
   }catch(e){
     CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
     cboAdminTourSetStatus(`<strong>Event kunde inte skapas.</strong><br>${String(e?.message||e)}`);
