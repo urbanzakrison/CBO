@@ -71,7 +71,7 @@ button{cursor:pointer}
 .react:disabled{opacity:.6;cursor:default}
 .latest-others{margin-top:10px}
 .page{display:none}.page.active{display:block}
-.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(calc(100% - 12px),548px);display:grid;grid-template-columns:repeat(5,1fr);background:#fbf5e8;border:1px solid #cbb990;border-bottom:0;border-radius:16px 16px 0 0;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:100;box-shadow:0 -5px 18px #40351e18;pointer-events:auto;isolation:isolate}
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(calc(100% - 12px),548px);display:grid;grid-template-columns:repeat(6,1fr);background:#fbf5e8;border:1px solid #cbb990;border-bottom:0;border-radius:16px 16px 0 0;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:100;box-shadow:0 -5px 18px #40351e18;pointer-events:auto;isolation:isolate}
 .nav button{appearance:none;-webkit-appearance:none;border:0;background:transparent;color:#6d716c;font-size:10px;padding:4px 1px;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 .nav button b{pointer-events:none;display:grid;place-items:center;width:38px;height:38px;border:1px solid #cfbd94;border-radius:12px;background:#fff9ed;font-size:20px;line-height:1;box-shadow:0 2px 7px #40351e12;margin:0 auto 1px}.nav button.active{color:var(--g);font-weight:900}.nav button.active b{background:#e8efe6;border-color:#87a995;box-shadow:inset 0 0 0 1px #bfd0c4}
 .nav button:active b{transform:scale(.96)}
@@ -567,12 +567,16 @@ button{cursor:pointer}
     <div id="adminAddMemberStatus" class="notice hidden" style="margin-top:10px"></div>
   </div>
 </section>
+ <section id="tour" class="page" aria-label="On Tour">
+  <iframe id="onTourMemberFrame" data-src="on-tour.html" title="CBO On Tour" loading="lazy" style="display:block;width:100%;height:calc(100vh - 105px);min-height:680px;border:0;border-radius:16px;background:transparent"></iframe>
+ </section>
  </main>
 
  <nav class="nav" aria-label="Huvudmeny">
   <button class="active" type="button" data-page="home"><b>🏠</b><span id="homeUnreadBadge" class="nav-unread-badge hidden" aria-label="Olästa på Hem"></span>Hem</button>
   <button type="button" data-page="leaderboard"><b>🏆</b>Leaderboard</button>
   <button type="button" data-page="rounds"><b>⛳</b>Omgångar</button>
+  <button type="button" data-page="tour"><b>✈️</b>On Tour</button>
   <button type="button" data-page="statistics"><b>📊</b>Statistik</button>
   <button type="button" data-page="clubhouse"><b>💬</b><span id="clubhouseUnreadBadge" class="nav-unread-badge hidden" aria-label="Olästa i Klubbhuset"></span>Klubbhuset</button>
    <button type="button" data-page="players"><b>🏌️</b>Spelare</button>
@@ -636,6 +640,10 @@ function leaderboard(cat){
 function showPage(id,btn){
  const target=document.getElementById(id);
  if(!target) return;
+ if(id==='tour'){
+   const frame=document.getElementById('onTourMemberFrame');
+   if(frame&&!frame.dataset.loaded){frame.src=frame.dataset.src;frame.dataset.loaded='1';}
+ }
  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));
  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b===(btn||document.querySelector(`.nav button[data-page="${id}"]`))));
  if(id==='admin') setupAdmin();
