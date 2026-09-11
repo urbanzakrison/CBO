@@ -19,3 +19,25 @@ window.CBO_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7OxIpZoLDJGUCg27sJhXcg_oor
     if(event.detail===0) refreshPlayersPage(event);
   });
 })();
+
+// CBO 4.6.x – member self-service entry point under Notiser on Hem.
+// UI-only link to the already isolated min-profil.html flow.
+(function cboAddMemberProfileLink(){
+  function mount(){
+    const card=document.getElementById("notificationCard");
+    if(!card || document.getElementById("memberProfileButton")) return;
+
+    const button=document.createElement("button");
+    button.id="memberProfileButton";
+    button.className="secondary";
+    button.type="button";
+    button.textContent="Min profil";
+    button.addEventListener("click",function(){
+      window.location.href="min-profil.html";
+    });
+    card.appendChild(button);
+  }
+
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",mount,{once:true});
+  else mount();
+})();
