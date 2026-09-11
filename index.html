@@ -451,6 +451,26 @@ button{cursor:pointer}
       <input id="onTourRoundTitle" type="text" maxlength="120" placeholder="Valfritt, t.ex. Runda 1">
       <button id="onTourPrepareRoundBtn" class="primary" type="button" onclick="cboAdminPrepareTourRound()">Förbered runda</button>
       <div id="onTourRoundStatus" class="notice" style="margin-top:10px"><strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.</div>
+
+      <div id="onTourGameBookImport" class="hidden" style="margin-top:14px;padding-top:12px;border-top:1px solid #d8c9aa">
+        <div class="cardhead"><div><h3 style="margin:0">📷 GameBook</h3><div class="sub">Bild 1 kan vara rondens sammanfattning. Lägg därefter till resultatbilder för samma runda.</div></div><span class="badge" style="background:#dcefed;color:#165d59">PREVIEW</span></div>
+        <label id="onTourGbFileLabel" class="primary" style="display:block;text-align:center;cursor:pointer">
+          VÄLJ GAMEBOOK-BILDER
+          <input id="onTourGbFiles" type="file" accept="image/*" multiple style="display:none" onchange="cboAdminTourFilesChanged(this)">
+        </label>
+        <div id="onTourGbFileList" class="sub" style="margin-top:8px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="onTourGbParseBtn" class="secondary" type="button" onclick="cboAdminParseTourImages()" disabled style="flex:1">Tolka bilder</button>
+          <button id="onTourGbClearBtn" class="secondary" type="button" onclick="cboAdminClearTourImages()" disabled style="flex:1">Rensa</button>
+        </div>
+        <div id="onTourGbStatus" class="notice hidden" style="margin-top:10px"></div>
+        <div id="onTourGbReview" class="hidden" style="margin-top:12px">
+          <div class="cardhead"><h3 style="margin:0">Granska tolkning</h3><span class="badge">INGEN PUBLICERING</span></div>
+          <div id="onTourGbMetadata" class="notice" style="margin-top:8px"></div>
+          <div id="onTourGbRows" style="margin-top:10px"></div>
+          <div class="notice" style="margin-top:10px"><strong>Kontrollpunkt:</strong><br>Detta är endast en förhandsgranskning. Inga On Tour-resultat publiceras i detta steg.</div>
+        </div>
+      </div>
     </div>
 
     <div class="notice" style="margin-top:10px"><strong>Skyddad separation:</strong><br>On Tour använder endast cbo_tour_* och påverkar inte CBO-poäng, närvaro, statistik eller leaderboard.</div>
@@ -2478,6 +2498,9 @@ let CBO_TOUR_ADMIN_ACTIVE_EVENT_ID=null;
 let CBO_TOUR_ADMIN_ACTIVE_EVENT_NAME=null;
 let CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR=null;
 let CBO_TOUR_ADMIN_ROUND_DRAFT=null;
+let CBO_TOUR_ADMIN_GB_FILES=[];
+let CBO_TOUR_ADMIN_GB_PARSES=[];
+let CBO_TOUR_ADMIN_GB_ROWS=[];
 
 function cboAdminTourSetStatus(html){
   const status=document.getElementById('onTourAdminEventStatus');
@@ -2486,9 +2509,87 @@ function cboAdminTourSetStatus(html){
 
 function cboAdminTourResetRoundDraft(){
   CBO_TOUR_ADMIN_ROUND_DRAFT=null;
+  cboAdminClearTourImages();
+  document.getElementById('onTourGameBookImport')?.classList.add('hidden');
   document.getElementById('onTourRoundDraftFields')?.classList.add('hidden');
   const status=document.getElementById('onTourRoundStatus');
   if(status)status.innerHTML='<strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.';
+}
+
+function cboAdminTourEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function cboAdminTourMetricLabel(m){return ({stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'})[m]||m||'Resultat';}
+function cboAdminTourB64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=reject;r.onload=()=>resolve(String(r.result).split(',')[1]);r.readAsDataURL(file);});}
+
+function cboAdminClearTourImages(){
+  CBO_TOUR_ADMIN_GB_FILES=[];
+  CBO_TOUR_ADMIN_GB_PARSES=[];
+  CBO_TOUR_ADMIN_GB_ROWS=[];
+  const input=document.getElementById('onTourGbFiles');if(input)input.value='';
+  const list=document.getElementById('onTourGbFileList');if(list)list.innerHTML='';
+  const parse=document.getElementById('onTourGbParseBtn');if(parse)parse.disabled=true;
+  const clear=document.getElementById('onTourGbClearBtn');if(clear)clear.disabled=true;
+  document.getElementById('onTourGbStatus')?.classList.add('hidden');
+  document.getElementById('onTourGbReview')?.classList.add('hidden');
+  const rows=document.getElementById('onTourGbRows');if(rows)rows.innerHTML='';
+  const meta=document.getElementById('onTourGbMetadata');if(meta)meta.innerHTML='';
+}
+
+function cboAdminTourFilesChanged(input){
+  CBO_TOUR_ADMIN_GB_FILES=[...(input?.files||[])];
+  CBO_TOUR_ADMIN_GB_PARSES=[];
+  CBO_TOUR_ADMIN_GB_ROWS=[];
+  const list=document.getElementById('onTourGbFileList');
+  if(list)list.innerHTML=CBO_TOUR_ADMIN_GB_FILES.map((f,i)=>`<div><strong>Bild ${i+1}</strong>${i===0?' · sammanfattning/resultat':''} · ${cboAdminTourEsc(f.name)}</div>`).join('');
+  const parse=document.getElementById('onTourGbParseBtn');if(parse)parse.disabled=!CBO_TOUR_ADMIN_GB_FILES.length;
+  const clear=document.getElementById('onTourGbClearBtn');if(clear)clear.disabled=!CBO_TOUR_ADMIN_GB_FILES.length;
+  document.getElementById('onTourGbReview')?.classList.add('hidden');
+}
+
+function cboAdminTourRenderGbPreview(){
+  const review=document.getElementById('onTourGbReview'),meta=document.getElementById('onTourGbMetadata'),rows=document.getElementById('onTourGbRows');
+  if(!review||!meta||!rows||!CBO_TOUR_ADMIN_ROUND_DRAFT)return;
+  const d=CBO_TOUR_ADMIN_ROUND_DRAFT;
+  const seen={dates:new Set(),courses:new Set(),holes:new Set(),metrics:[]};
+  CBO_TOUR_ADMIN_GB_PARSES.forEach(p=>{if(p.played_on)seen.dates.add(String(p.played_on));if(p.course)seen.courses.add(String(p.course));if(p.holes)seen.holes.add(Number(p.holes));if(Array.isArray(p.tabs_left_to_right)&&p.tabs_left_to_right.length)seen.metrics.push(p.tabs_left_to_right[0]);});
+  const detectedMetric=seen.metrics.find(Boolean)||null;
+  const mismatches=[];
+  if(seen.dates.size&&![...seen.dates].includes(d.played_on))mismatches.push(`datum: utkast ${d.played_on}, GameBook ${[...seen.dates].join(', ')}`);
+  if(seen.courses.size&&![...seen.courses].some(x=>x.toLowerCase()===String(d.course).toLowerCase()))mismatches.push(`bana: utkast ${d.course}, GameBook ${[...seen.courses].join(', ')}`);
+  if(seen.holes.size&&![...seen.holes].includes(Number(d.holes)))mismatches.push(`hål: utkast ${d.holes}, GameBook ${[...seen.holes].join(', ')}`);
+  if(d.round_type==='individual'&&detectedMetric&&detectedMetric!==d.primary_metric)mismatches.push(`primär tävlingsform: utkast ${cboAdminTourMetricLabel(d.primary_metric)}, GameBook ${cboAdminTourMetricLabel(detectedMetric)}`);
+  const facts=[];if(seen.dates.size)facts.push(`Datum ${[...seen.dates].join(', ')}`);if(seen.courses.size)facts.push(`Bana ${[...seen.courses].join(', ')}`);if(seen.holes.size)facts.push(`${[...seen.holes].join('/')} hål`);if(detectedMetric)facts.push(`Vänster flik ${cboAdminTourMetricLabel(detectedMetric)}`);
+  meta.innerHTML=mismatches.length
+    ? `<strong style="color:#842029">⚠ Kontrollera metadata innan publicering senare.</strong><br>${cboAdminTourEsc(mismatches.join(' · '))}`
+    : `<strong>✓ Utkast och säker GameBook-metadata matchar.</strong><br>${cboAdminTourEsc(facts.join(' · ')||'Ingen säker metadata kunde läsas från bilderna.')}`;
+  rows.innerHTML=CBO_TOUR_ADMIN_GB_ROWS.length?CBO_TOUR_ADMIN_GB_ROWS.map(r=>`<div style="padding:10px 0;border-top:1px solid #e8dfce"><div class="sub" style="font-weight:900;color:#2c7773">${cboAdminTourEsc(cboAdminTourMetricLabel(r.metric))} · bild ${r._image}</div><div style="font-size:16px;font-weight:850;margin:2px 0 6px">${cboAdminTourEsc(r.participant_name)}</div><div class="sub">Resultat <strong>${cboAdminTourEsc(r.result_value??'—')}</strong> · Mot par <strong>${cboAdminTourEsc(r.to_par??'—')}</strong> · Plats <strong>${cboAdminTourEsc(r.displayed_position??'—')}</strong> · HCP <strong>${cboAdminTourEsc(r.displayed_hcp??'—')}</strong></div></div>`).join(''):'<div class="notice">Inga resultatposter hittades i bilderna.</div>';
+  review.classList.remove('hidden');
+}
+
+async function cboAdminParseTourImages(){
+  const status=document.getElementById('onTourGbStatus'),parseBtn=document.getElementById('onTourGbParseBtn');
+  if(!CBO_TOUR_ADMIN_ROUND_DRAFT){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Förbered rundan först.</strong>';}return;}
+  if(!CBO_TOUR_ADMIN_GB_FILES.length)return;
+  if(!window.CBO_SUPABASE_CLIENT){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Supabase-klienten saknas.</strong>';}return;}
+  CBO_TOUR_ADMIN_GB_PARSES=[];CBO_TOUR_ADMIN_GB_ROWS=[];
+  if(parseBtn)parseBtn.disabled=true;if(status)status.classList.remove('hidden');
+  try{
+    for(let i=0;i<CBO_TOUR_ADMIN_GB_FILES.length;i++){
+      const file=CBO_TOUR_ADMIN_GB_FILES[i];
+      if(status)status.textContent=`Tolkar bild ${i+1} av ${CBO_TOUR_ADMIN_GB_FILES.length}…`;
+      const image=await cboAdminTourB64(file);
+      const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('parse-gamebook-tour',{body:{image,mime:file.type||'image/jpeg',segment:'full'}});
+      if(error)throw error;if(!data?.ok)throw new Error(data?.error||'Tolkning misslyckades.');
+      CBO_TOUR_ADMIN_GB_PARSES.push(data);
+      for(const r of(data.results||[])){
+        const metric=r.metric||data.metric||null,segment=r.segment||'full';
+        const key=[String(r.participant_name||'').trim().toLowerCase(),metric,segment].join('|');
+        if(!CBO_TOUR_ADMIN_GB_ROWS.some(x=>x._key===key))CBO_TOUR_ADMIN_GB_ROWS.push({...r,metric,segment,_key:key,_image:i+1});
+      }
+    }
+    cboAdminTourRenderGbPreview();
+    if(status)status.innerHTML=`<strong>✓ Tolkning klar.</strong><br>${CBO_TOUR_ADMIN_GB_FILES.length} bilder → ${CBO_TOUR_ADMIN_GB_ROWS.length} resultatposter. Ingen data har publicerats.`;
+  }catch(e){if(status)status.innerHTML=`<strong style="color:#842029">Tolkningen misslyckades.</strong><br>${cboAdminTourEsc(e?.message||e)}`;}
+  finally{if(parseBtn)parseBtn.disabled=!CBO_TOUR_ADMIN_GB_FILES.length;}
 }
 
 function cboAdminTourActivateEvent(id,name,year,startDate=null){
@@ -2544,8 +2645,10 @@ function cboAdminPrepareTourRound(){
   if(!['individual','scramble','team','other'].includes(roundType)){if(status)status.innerHTML='<strong>Ogiltig rondtyp.</strong>';return;}
   if(roundType==='individual'&&!['stroke_net','stableford_net','stroke_scr','stableford_scr'].includes(primaryMetric)){if(status)status.innerHTML='<strong>Välj primär tävlingsform.</strong>';return;}
   CBO_TOUR_ADMIN_ROUND_DRAFT={event_id:CBO_TOUR_ADMIN_ACTIVE_EVENT_ID,round_no:roundNo,title,played_on:playedOn,course,holes,round_type:roundType,primary_metric:roundType==='individual'?primaryMetric:null};
+  cboAdminClearTourImages();
+  document.getElementById('onTourGameBookImport')?.classList.remove('hidden');
   const metricLabel={stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'}[primaryMetric]||'';
-  if(status)status.innerHTML=`<strong>Runda ${roundNo} förberedd ✓</strong><br>${playedOn} · ${course} · ${holes} hål${metricLabel?` · ${metricLabel}`:''}. Nästa steg är GameBook-bilder och granskning.`;
+  if(status)status.innerHTML=`<strong>Runda ${roundNo} förberedd ✓</strong><br>${playedOn} · ${course} · ${holes} hål${metricLabel?` · ${metricLabel}`:''}. Välj nu GameBook-bilder och granska tolkningen innan publicering.`;
 }
 
 function cboAdminTourEventModeChanged(value){
