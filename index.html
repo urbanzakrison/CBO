@@ -381,6 +381,22 @@ button{cursor:pointer}
 
   <section id="admin" class="page content">
 <div class="card"><div class="cardhead"><div><h2>Inloggning</h2><div id="signedInAs" class="sub">Inloggad</div></div><span class="badge">ADMIN</span></div><button class="secondary" onclick="cboLogout()">Logga ut</button></div>
+
+   <div class="card" id="adminImportDestinationCard">
+    <div class="cardhead"><div><h2>Importdestination</h2><div class="sub">Välj vart nästa GameBook-import ska publiceras.</div></div><span class="badge">ADMIN</span></div>
+    <label for="adminImportDestinationSelect">Destination</label>
+    <select id="adminImportDestinationSelect" onchange="cboAdminImportDestinationChanged(this.value)">
+      <option value="cbo" selected>CBO-omgång</option>
+      <option value="tour">On Tour</option>
+    </select>
+    <div id="adminImportDestinationHelp" class="notice" style="margin-top:10px"><strong>CBO-omgång är förvald.</strong><br>Den befintliga CBO-importen och publiceringen används oförändrad.</div>
+   </div>
+
+   <div id="onTourAdminPanel" class="card hidden" style="border-left:5px solid #2c7773">
+    <div class="cardhead"><div><h2>On Tour</h2><div class="sub">Separat importflöde för golfresor och tävlingar utanför ordinarie CBO-serie.</div></div><span class="badge" style="background:#dcefed;color:#165d59">ON TOUR</span></div>
+    <div class="notice" style="margin-top:10px"><strong>On Tour-import förbereds.</strong><br>Ingen bildtolkning eller publicering är ansluten i detta steg. Den ordinarie CBO-importen påverkas inte.</div>
+   </div>
+
    <div class="card">
     <div class="cardhead"><h2>Ny omgång</h2><span class="badge">ADMIN</span></div>
     <label>Omgång</label><input id="newRoundNo" type="number" required aria-required="true" oninput="cboUpdateAdminGate()">
@@ -2396,4 +2412,21 @@ window.addEventListener('load',()=>{
 });
 </script>
 
+
+<script id="onTourAdminDestinationScript">
+function cboAdminImportDestinationChanged(value){
+  const selected=value==='tour'?'tour':'cbo';
+  const tour=document.getElementById('onTourAdminPanel');
+  const gb=document.getElementById('gamebookImportBox');
+  const cboCard=gb?gb.closest('.card'):null;
+  const help=document.getElementById('adminImportDestinationHelp');
+  if(tour)tour.classList.toggle('hidden',selected!=='tour');
+  if(cboCard)cboCard.classList.toggle('hidden',selected==='tour');
+  if(help){
+    help.innerHTML=selected==='tour'
+      ? '<strong>On Tour valt.</strong><br>On Tour får ett separat import- och publiceringsflöde. Ingen CBO-data skrivs från den grenen.'
+      : '<strong>CBO-omgång är förvald.</strong><br>Den befintliga CBO-importen och publiceringen används oförändrad.';
+  }
+}
+</script>
 </body></html>
