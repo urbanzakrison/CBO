@@ -1,0 +1,71 @@
+name: One-time On Tour GameBook preview patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-on-tour-gamebook-preview.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch index.html safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          if 'id="onTourGameBookImport"' in s:
+              raise SystemExit('On Tour GameBook preview UI already exists; refusing duplicate patch.')
+
+          ui_marker='''      <button id="onTourPrepareRoundBtn" class="primary" type="button" onclick="cboAdminPrepareTourRound()">Förbered runda</button>\n      <div id="onTourRoundStatus" class="notice" style="margin-top:10px"><strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.</div>\n    </div>'''
+
+          ui_replacement='''      <button id="onTourPrepareRoundBtn" class="primary" type="button" onclick="cboAdminPrepareTourRound()">Förbered runda</button>\n      <div id="onTourRoundStatus" class="notice" style="margin-top:10px"><strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.</div>\n\n      <div id="onTourGameBookImport" class="hidden" style="margin-top:14px;padding-top:12px;border-top:1px solid #d8c9aa">\n        <div class="cardhead"><div><h3 style="margin:0">📷 GameBook</h3><div class="sub">Bild 1 kan vara rondens sammanfattning. Lägg därefter till resultatbilder för samma runda.</div></div><span class="badge" style="background:#dcefed;color:#165d59">PREVIEW</span></div>\n        <label id="onTourGbFileLabel" class="primary" style="display:block;text-align:center;cursor:pointer">\n          VÄLJ GAMEBOOK-BILDER\n          <input id="onTourGbFiles" type="file" accept="image/*" multiple style="display:none" onchange="cboAdminTourFilesChanged(this)">\n        </label>\n        <div id="onTourGbFileList" class="sub" style="margin-top:8px"></div>\n        <div style="display:flex;gap:8px;margin-top:8px">\n          <button id="onTourGbParseBtn" class="secondary" type="button" onclick="cboAdminParseTourImages()" disabled style="flex:1">Tolka bilder</button>\n          <button id="onTourGbClearBtn" class="secondary" type="button" onclick="cboAdminClearTourImages()" disabled style="flex:1">Rensa</button>\n        </div>\n        <div id="onTourGbStatus" class="notice hidden" style="margin-top:10px"></div>\n        <div id="onTourGbReview" class="hidden" style="margin-top:12px">\n          <div class="cardhead"><h3 style="margin:0">Granska tolkning</h3><span class="badge">INGEN PUBLICERING</span></div>\n          <div id="onTourGbMetadata" class="notice" style="margin-top:8px"></div>\n          <div id="onTourGbRows" style="margin-top:10px"></div>\n          <div class="notice" style="margin-top:10px"><strong>Kontrollpunkt:</strong><br>Detta är endast en förhandsgranskning. Inga On Tour-resultat publiceras i detta steg.</div>\n        </div>\n      </div>\n    </div>'''
+
+          if s.count(ui_marker)!=1:
+              raise SystemExit(f'Expected one round draft marker, found {s.count(ui_marker)}. No change made.')
+          s=s.replace(ui_marker,ui_replacement,1)
+
+          state_marker='''let CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR=null;\nlet CBO_TOUR_ADMIN_ROUND_DRAFT=null;'''
+          state_replacement='''let CBO_TOUR_ADMIN_ACTIVE_EVENT_YEAR=null;\nlet CBO_TOUR_ADMIN_ROUND_DRAFT=null;\nlet CBO_TOUR_ADMIN_GB_FILES=[];\nlet CBO_TOUR_ADMIN_GB_PARSES=[];\nlet CBO_TOUR_ADMIN_GB_ROWS=[];'''
+          if s.count(state_marker)!=1:
+              raise SystemExit('On Tour state marker missing or duplicated. No change made.')
+          s=s.replace(state_marker,state_replacement,1)
+
+          helper_marker='''function cboAdminTourResetRoundDraft(){\n  CBO_TOUR_ADMIN_ROUND_DRAFT=null;\n  document.getElementById('onTourRoundDraftFields')?.classList.add('hidden');\n  const status=document.getElementById('onTourRoundStatus');\n  if(status)status.innerHTML='<strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.';\n}\n'''
+
+          helper_replacement='''function cboAdminTourResetRoundDraft(){\n  CBO_TOUR_ADMIN_ROUND_DRAFT=null;\n  cboAdminClearTourImages();\n  document.getElementById('onTourGameBookImport')?.classList.add('hidden');\n  document.getElementById('onTourRoundDraftFields')?.classList.add('hidden');\n  const status=document.getElementById('onTourRoundStatus');\n  if(status)status.innerHTML='<strong>Ingen runda förberedd ännu.</strong><br>Rundan sparas inte i databasen förrän resultat senare granskas och publiceras.';\n}\n\nfunction cboAdminTourEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}\nfunction cboAdminTourMetricLabel(m){return ({stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'})[m]||m||'Resultat';}\nfunction cboAdminTourB64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=reject;r.onload=()=>resolve(String(r.result).split(',')[1]);r.readAsDataURL(file);});}\n\nfunction cboAdminClearTourImages(){\n  CBO_TOUR_ADMIN_GB_FILES=[];\n  CBO_TOUR_ADMIN_GB_PARSES=[];\n  CBO_TOUR_ADMIN_GB_ROWS=[];\n  const input=document.getElementById('onTourGbFiles');if(input)input.value='';\n  const list=document.getElementById('onTourGbFileList');if(list)list.innerHTML='';\n  const parse=document.getElementById('onTourGbParseBtn');if(parse)parse.disabled=true;\n  const clear=document.getElementById('onTourGbClearBtn');if(clear)clear.disabled=true;\n  document.getElementById('onTourGbStatus')?.classList.add('hidden');\n  document.getElementById('onTourGbReview')?.classList.add('hidden');\n  const rows=document.getElementById('onTourGbRows');if(rows)rows.innerHTML='';\n  const meta=document.getElementById('onTourGbMetadata');if(meta)meta.innerHTML='';\n}\n\nfunction cboAdminTourFilesChanged(input){\n  CBO_TOUR_ADMIN_GB_FILES=[...(input?.files||[])];\n  CBO_TOUR_ADMIN_GB_PARSES=[];\n  CBO_TOUR_ADMIN_GB_ROWS=[];\n  const list=document.getElementById('onTourGbFileList');\n  if(list)list.innerHTML=CBO_TOUR_ADMIN_GB_FILES.map((f,i)=>`<div><strong>Bild ${i+1}</strong>${i===0?' · sammanfattning/resultat':''} · ${cboAdminTourEsc(f.name)}</div>`).join('');\n  const parse=document.getElementById('onTourGbParseBtn');if(parse)parse.disabled=!CBO_TOUR_ADMIN_GB_FILES.length;\n  const clear=document.getElementById('onTourGbClearBtn');if(clear)clear.disabled=!CBO_TOUR_ADMIN_GB_FILES.length;\n  document.getElementById('onTourGbReview')?.classList.add('hidden');\n}\n\nfunction cboAdminTourRenderGbPreview(){\n  const review=document.getElementById('onTourGbReview'),meta=document.getElementById('onTourGbMetadata'),rows=document.getElementById('onTourGbRows');\n  if(!review||!meta||!rows||!CBO_TOUR_ADMIN_ROUND_DRAFT)return;\n  const d=CBO_TOUR_ADMIN_ROUND_DRAFT;\n  const seen={dates:new Set(),courses:new Set(),holes:new Set(),metrics:[]};\n  CBO_TOUR_ADMIN_GB_PARSES.forEach(p=>{if(p.played_on)seen.dates.add(String(p.played_on));if(p.course)seen.courses.add(String(p.course));if(p.holes)seen.holes.add(Number(p.holes));if(Array.isArray(p.tabs_left_to_right)&&p.tabs_left_to_right.length)seen.metrics.push(p.tabs_left_to_right[0]);});\n  const detectedMetric=seen.metrics.find(Boolean)||null;\n  const mismatches=[];\n  if(seen.dates.size&&![...seen.dates].includes(d.played_on))mismatches.push(`datum: utkast ${d.played_on}, GameBook ${[...seen.dates].join(', ')}`);\n  if(seen.courses.size&&![...seen.courses].some(x=>x.toLowerCase()===String(d.course).toLowerCase()))mismatches.push(`bana: utkast ${d.course}, GameBook ${[...seen.courses].join(', ')}`);\n  if(seen.holes.size&&![...seen.holes].includes(Number(d.holes)))mismatches.push(`hål: utkast ${d.holes}, GameBook ${[...seen.holes].join(', ')}`);\n  if(d.round_type==='individual'&&detectedMetric&&detectedMetric!==d.primary_metric)mismatches.push(`primär tävlingsform: utkast ${cboAdminTourMetricLabel(d.primary_metric)}, GameBook ${cboAdminTourMetricLabel(detectedMetric)}`);\n  const facts=[];if(seen.dates.size)facts.push(`Datum ${[...seen.dates].join(', ')}`);if(seen.courses.size)facts.push(`Bana ${[...seen.courses].join(', ')}`);if(seen.holes.size)facts.push(`${[...seen.holes].join('/')} hål`);if(detectedMetric)facts.push(`Vänster flik ${cboAdminTourMetricLabel(detectedMetric)}`);\n  meta.innerHTML=mismatches.length\n    ? `<strong style="color:#842029">⚠ Kontrollera metadata innan publicering senare.</strong><br>${cboAdminTourEsc(mismatches.join(' · '))}`\n    : `<strong>✓ Utkast och säker GameBook-metadata matchar.</strong><br>${cboAdminTourEsc(facts.join(' · ')||'Ingen säker metadata kunde läsas från bilderna.')}`;\n  rows.innerHTML=CBO_TOUR_ADMIN_GB_ROWS.length?CBO_TOUR_ADMIN_GB_ROWS.map(r=>`<div style="padding:10px 0;border-top:1px solid #e8dfce"><div class="sub" style="font-weight:900;color:#2c7773">${cboAdminTourEsc(cboAdminTourMetricLabel(r.metric))} · bild ${r._image}</div><div style="font-size:16px;font-weight:850;margin:2px 0 6px">${cboAdminTourEsc(r.participant_name)}</div><div class="sub">Resultat <strong>${cboAdminTourEsc(r.result_value??'—')}</strong> · Mot par <strong>${cboAdminTourEsc(r.to_par??'—')}</strong> · Plats <strong>${cboAdminTourEsc(r.displayed_position??'—')}</strong> · HCP <strong>${cboAdminTourEsc(r.displayed_hcp??'—')}</strong></div></div>`).join(''):'<div class="notice">Inga resultatposter hittades i bilderna.</div>';\n  review.classList.remove('hidden');\n}\n\nasync function cboAdminParseTourImages(){\n  const status=document.getElementById('onTourGbStatus'),parseBtn=document.getElementById('onTourGbParseBtn');\n  if(!CBO_TOUR_ADMIN_ROUND_DRAFT){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Förbered rundan först.</strong>';}return;}\n  if(!CBO_TOUR_ADMIN_GB_FILES.length)return;\n  if(!window.CBO_SUPABASE_CLIENT){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Supabase-klienten saknas.</strong>';}return;}\n  CBO_TOUR_ADMIN_GB_PARSES=[];CBO_TOUR_ADMIN_GB_ROWS=[];\n  if(parseBtn)parseBtn.disabled=true;if(status)status.classList.remove('hidden');\n  try{\n    for(let i=0;i<CBO_TOUR_ADMIN_GB_FILES.length;i++){\n      const file=CBO_TOUR_ADMIN_GB_FILES[i];\n      if(status)status.textContent=`Tolkar bild ${i+1} av ${CBO_TOUR_ADMIN_GB_FILES.length}…`;\n      const image=await cboAdminTourB64(file);\n      const {data,error}=await window.CBO_SUPABASE_CLIENT.functions.invoke('parse-gamebook-tour',{body:{image,mime:file.type||'image/jpeg',segment:'full'}});\n      if(error)throw error;if(!data?.ok)throw new Error(data?.error||'Tolkning misslyckades.');\n      CBO_TOUR_ADMIN_GB_PARSES.push(data);\n      for(const r of(data.results||[])){\n        const metric=r.metric||data.metric||null,segment=r.segment||'full';\n        const key=[String(r.participant_name||'').trim().toLowerCase(),metric,segment].join('|');\n        if(!CBO_TOUR_ADMIN_GB_ROWS.some(x=>x._key===key))CBO_TOUR_ADMIN_GB_ROWS.push({...r,metric,segment,_key:key,_image:i+1});\n      }\n    }\n    cboAdminTourRenderGbPreview();\n    if(status)status.innerHTML=`<strong>✓ Tolkning klar.</strong><br>${CBO_TOUR_ADMIN_GB_FILES.length} bilder → ${CBO_TOUR_ADMIN_GB_ROWS.length} resultatposter. Ingen data har publicerats.`;\n  }catch(e){if(status)status.innerHTML=`<strong style="color:#842029">Tolkningen misslyckades.</strong><br>${cboAdminTourEsc(e?.message||e)}`;}\n  finally{if(parseBtn)parseBtn.disabled=!CBO_TOUR_ADMIN_GB_FILES.length;}\n}\n'''
+
+          if s.count(helper_marker)!=1:
+              raise SystemExit('Round reset helper marker missing or duplicated. No change made.')
+          s=s.replace(helper_marker,helper_replacement,1)
+
+          prepare_marker='''  CBO_TOUR_ADMIN_ROUND_DRAFT={event_id:CBO_TOUR_ADMIN_ACTIVE_EVENT_ID,round_no:roundNo,title,played_on:playedOn,course,holes,round_type:roundType,primary_metric:roundType==='individual'?primaryMetric:null};\n  const metricLabel={stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'}[primaryMetric]||'';\n  if(status)status.innerHTML=`<strong>Runda ${roundNo} förberedd ✓</strong><br>${playedOn} · ${course} · ${holes} hål${metricLabel?` · ${metricLabel}`:''}. Nästa steg är GameBook-bilder och granskning.`;'''
+
+          prepare_replacement='''  CBO_TOUR_ADMIN_ROUND_DRAFT={event_id:CBO_TOUR_ADMIN_ACTIVE_EVENT_ID,round_no:roundNo,title,played_on:playedOn,course,holes,round_type:roundType,primary_metric:roundType==='individual'?primaryMetric:null};\n  cboAdminClearTourImages();\n  document.getElementById('onTourGameBookImport')?.classList.remove('hidden');\n  const metricLabel={stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'}[primaryMetric]||'';\n  if(status)status.innerHTML=`<strong>Runda ${roundNo} förberedd ✓</strong><br>${playedOn} · ${course} · ${holes} hål${metricLabel?` · ${metricLabel}`:''}. Välj nu GameBook-bilder och granska tolkningen innan publicering.`;'''
+
+          if s.count(prepare_marker)!=1:
+              raise SystemExit('Prepare-round marker missing or duplicated. No change made.')
+          s=s.replace(prepare_marker,prepare_replacement,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit isolated On Tour GameBook preview
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add On Tour GameBook parsing preview"
+          git push origin HEAD:main
