@@ -24,7 +24,7 @@
   </div>
 </div>
 <script>
-let sb,feed=[]; const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+let sb,feed=[]; const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const metricLabel=m=>({stroke_net:'Slagspel NET',stableford_net:'Poängbogey NET',stroke_scr:'Slagspel SCR',stableford_scr:'Poängbogey SCR'})[m]||m||'Resultat';
 const fmtDate=d=>{if(!d)return 'Datum saknas'; const [y,m,day]=String(d).split('-'); return `${Number(day)}.${Number(m)}.${y}`};
 const ng=v=>String(v||'').replace(/\D/g,'').slice(0,9);
