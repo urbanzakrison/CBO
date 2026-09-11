@@ -1,0 +1,77 @@
+name: One-time On Tour publish round patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-on-tour-publish-round.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch index.html safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          if 'id="onTourGbPublishBtn"' in s:
+              raise SystemExit('On Tour publish UI already exists; refusing duplicate patch.')
+
+          ui_old='''          <div class="notice" style="margin-top:10px"><strong>Kontrollpunkt:</strong><br>Detta är endast en förhandsgranskning. Inga On Tour-resultat publiceras i detta steg.</div>\n        </div>'''
+          ui_new='''          <div class="notice" style="margin-top:10px"><strong>Kontrollpunkt:</strong><br>Publicera först när event, runda, GameBook-metadata och resultat är verifierade.</div>\n          <button id="onTourGbPublishBtn" class="primary" type="button" onclick="cboAdminPublishTourRound()" disabled>Publicera On Tour-runda</button>\n          <button id="onTourGbNextRoundBtn" class="secondary hidden" type="button" onclick="cboAdminPrepareNextTourRound()">Förbered nästa runda i samma event</button>\n          <div id="onTourGbPublishStatus" class="notice hidden" style="margin-top:10px"></div>\n        </div>'''
+          if s.count(ui_old)!=1:
+              raise SystemExit(f'Publish UI marker count {s.count(ui_old)}; no change made.')
+          s=s.replace(ui_old,ui_new,1)
+
+          state_old='''let CBO_TOUR_ADMIN_GB_FILES=[];\nlet CBO_TOUR_ADMIN_GB_PARSES=[];\nlet CBO_TOUR_ADMIN_GB_ROWS=[];'''
+          state_new='''let CBO_TOUR_ADMIN_GB_FILES=[];\nlet CBO_TOUR_ADMIN_GB_PARSES=[];\nlet CBO_TOUR_ADMIN_GB_ROWS=[];\nlet CBO_TOUR_ADMIN_GB_METADATA_OK=false;\nlet CBO_TOUR_ADMIN_LAST_PUBLISHED_ROUND_NO=null;'''
+          if s.count(state_old)!=1:
+              raise SystemExit('On Tour GameBook state marker missing or duplicated.')
+          s=s.replace(state_old,state_new,1)
+
+          clear_old='''  CBO_TOUR_ADMIN_GB_PARSES=[];\n  CBO_TOUR_ADMIN_GB_ROWS=[];\n  const input=document.getElementById('onTourGbFiles');if(input)input.value='';'''
+          clear_new='''  CBO_TOUR_ADMIN_GB_PARSES=[];\n  CBO_TOUR_ADMIN_GB_ROWS=[];\n  CBO_TOUR_ADMIN_GB_METADATA_OK=false;\n  const input=document.getElementById('onTourGbFiles');if(input)input.value='';'''
+          if s.count(clear_old)!=1:
+              raise SystemExit('Clear state marker missing or duplicated.')
+          s=s.replace(clear_old,clear_new,1)
+
+          clear_tail_old='''  const meta=document.getElementById('onTourGbMetadata');if(meta)meta.innerHTML='';\n}\n'''
+          clear_tail_new='''  const meta=document.getElementById('onTourGbMetadata');if(meta)meta.innerHTML='';\n  const publish=document.getElementById('onTourGbPublishBtn');if(publish)publish.disabled=true;\n  document.getElementById('onTourGbNextRoundBtn')?.classList.add('hidden');\n  document.getElementById('onTourGbPublishStatus')?.classList.add('hidden');\n}\n'''
+          if s.count(clear_tail_old)!=1:
+              raise SystemExit('Clear tail marker missing or duplicated.')
+          s=s.replace(clear_tail_old,clear_tail_new,1)
+
+          render_marker='''  meta.innerHTML=mismatches.length\n    ? `<strong style="color:#842029">⚠ Kontrollera metadata innan publicering senare.</strong><br>${cboAdminTourEsc(mismatches.join(' · '))}`\n    : `<strong>✓ Utkast och säker GameBook-metadata matchar.</strong><br>${cboAdminTourEsc(facts.join(' · ')||'Ingen säker metadata kunde läsas från bilderna.')}`;\n  rows.innerHTML=CBO_TOUR_ADMIN_GB_ROWS.length?'''
+          render_replacement='''  CBO_TOUR_ADMIN_GB_METADATA_OK=mismatches.length===0;\n  meta.innerHTML=mismatches.length\n    ? `<strong style="color:#842029">⚠ Metadata matchar inte.</strong><br>${cboAdminTourEsc(mismatches.join(' · '))}`\n    : `<strong>✓ Utkast och säker GameBook-metadata matchar.</strong><br>${cboAdminTourEsc(facts.join(' · ')||'Ingen säker metadata kunde läsas från bilderna.')}`;\n  rows.innerHTML=CBO_TOUR_ADMIN_GB_ROWS.length?'''
+          if s.count(render_marker)!=1:
+              raise SystemExit('Preview metadata marker missing or duplicated.')
+          s=s.replace(render_marker,render_replacement,1)
+
+          review_old='''  review.classList.remove('hidden');\n}\n\nasync function cboAdminParseTourImages(){'''
+          review_new='''  const publish=document.getElementById('onTourGbPublishBtn');\n  const hasPrimary=d.round_type==='individual'&&d.primary_metric&&CBO_TOUR_ADMIN_GB_ROWS.some(r=>r.metric===d.primary_metric);\n  if(publish)publish.disabled=!(CBO_TOUR_ADMIN_GB_METADATA_OK&&hasPrimary&&CBO_TOUR_ADMIN_GB_ROWS.length>0);\n  review.classList.remove('hidden');\n}\n\nasync function cboAdminPublishTourRound(){\n  const status=document.getElementById('onTourGbPublishStatus'),btn=document.getElementById('onTourGbPublishBtn');\n  const d=CBO_TOUR_ADMIN_ROUND_DRAFT;\n  if(!d||!CBO_TOUR_ADMIN_ACTIVE_EVENT_ID)return;\n  if(d.round_type!=='individual'){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Publicering stöds ännu endast för individuell GameBook-runda.</strong>';}return;}\n  if(!CBO_TOUR_ADMIN_GB_METADATA_OK){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Metadata måste matcha innan publicering.</strong>';}return;}\n  if(!CBO_TOUR_ADMIN_GB_ROWS.length||!d.primary_metric||!CBO_TOUR_ADMIN_GB_ROWS.some(r=>r.metric===d.primary_metric)){if(status){status.classList.remove('hidden');status.innerHTML='<strong>Primär tävlingsform saknas bland tolkade resultat.</strong>';}return;}\n  const ename=CBO_TOUR_ADMIN_ACTIVE_EVENT_NAME||'On Tour-event';\n  if(!confirm(`Publicera ${ename} · Runda ${d.round_no}?\\n\\n${d.played_on} · ${d.course} · ${d.holes} hål\\n\\nBekräfta att event och runda är rätt.`))return;\n  if(btn)btn.disabled=true;if(status){status.classList.remove('hidden');status.textContent='Kontrollerar dubblett…';}\n  try{\n    const dup=await window.CBO_SUPABASE_CLIENT.rpc('cbo_tour_round_duplicate_check',{p_event_id:d.event_id,p_round_no:d.round_no});\n    if(dup.error)throw dup.error;if(!dup.data?.ok)throw new Error(dup.data?.error||'Dubblettkontroll misslyckades.');\n    if(dup.data.duplicate)throw new Error('Rundan finns redan och innehåller resultat för detta On Tour-event.');\n    const payload=CBO_TOUR_ADMIN_GB_ROWS.map(r=>({participant_name:r.participant_name,displayed_hcp:r.displayed_hcp??null,segment:r.segment||'full',metric:r.metric,result_value:r.result_value,to_par:r.to_par??null,displayed_position:r.displayed_position??null,source:'gamebook',source_ref:`${ename} R${d.round_no} GameBook`}));\n    if(status)status.textContent='Publicerar On Tour-runda…';\n    const pub=await window.CBO_SUPABASE_CLIENT.rpc('cbo_tour_publish_round',{p_event_id:d.event_id,p_round_no:d.round_no,p_title:d.title||`${ename} runda ${d.round_no}`,p_played_on:d.played_on,p_course:d.course,p_holes:d.holes,p_round_type:d.round_type,p_notes:'GameBook-import via CBO Admin',p_primary_metric:d.primary_metric,p_results:payload,p_results_complete:true});\n    if(pub.error)throw pub.error;if(!pub.data?.ok)throw new Error(pub.data?.error||'Publicering misslyckades.');\n    CBO_TOUR_ADMIN_LAST_PUBLISHED_ROUND_NO=d.round_no;\n    if(status)status.innerHTML=`<strong>✓ On Tour-rundan är publicerad.</strong><br>${payload.length} resultatposter sparades. Runda ${d.round_no} ligger kvar under ${cboAdminTourEsc(ename)}.`;\n    document.getElementById('onTourGbNextRoundBtn')?.classList.remove('hidden');\n  }catch(e){if(status)status.innerHTML=`<strong style="color:#842029">Publicering stoppad.</strong><br>${cboAdminTourEsc(e?.message||e)}`;if(btn)btn.disabled=false;}\n}\n\nfunction cboAdminPrepareNextTourRound(){\n  const next=(Number(CBO_TOUR_ADMIN_LAST_PUBLISHED_ROUND_NO)||Number(CBO_TOUR_ADMIN_ROUND_DRAFT?.round_no)||0)+1;\n  cboAdminClearTourImages();\n  CBO_TOUR_ADMIN_ROUND_DRAFT=null;\n  const no=document.getElementById('onTourRoundNo');if(no)no.value=String(next);\n  const date=document.getElementById('onTourRoundDate');if(date)date.value='';\n  const course=document.getElementById('onTourRoundCourse');if(course)course.value='';\n  const title=document.getElementById('onTourRoundTitle');if(title)title.value='';\n  const metric=document.getElementById('onTourPrimaryMetric');if(metric)metric.value='';\n  document.getElementById('onTourGameBookImport')?.classList.add('hidden');\n  const rs=document.getElementById('onTourRoundStatus');if(rs)rs.innerHTML=`<strong>Runda ${next} är nästa.</strong><br>Fyll i datum, bana och primär tävlingsform och välj sedan Förbered runda.`;\n  document.getElementById('onTourRoundDraftFields')?.scrollIntoView({behavior:'smooth',block:'start'});\n}\n\nasync function cboAdminParseTourImages(){'''
+          if s.count(review_old)!=1:
+              raise SystemExit('Preview review marker missing or duplicated.')
+          s=s.replace(review_old,review_new,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit isolated On Tour publish flow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add On Tour round publish flow"
+          git push origin HEAD:main
