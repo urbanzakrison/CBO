@@ -26,26 +26,8 @@ jobs:
           s=p.read_text(encoding='utf-8')
           if 'CBO 4.6.x page-open refresh' in s:
               raise SystemExit('Refresh fix already present; refusing duplicate patch.')
-          old='''function showPage(id,btn){
- const target=document.getElementById(id);
- if(!target) return;
- if(id==='tour'){
-   const frame=document.getElementById('onTourMemberFrame');
-   if(frame&&!frame.dataset.loaded){frame.src=frame.dataset.src;frame.dataset.loaded='1';}
- }
- document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));'''
-          new='''function showPage(id,btn){
- const target=document.getElementById(id);
- if(!target) return;
- if(id==='tour'){
-   const frame=document.getElementById('onTourMemberFrame');
-   if(frame&&!frame.dataset.loaded){frame.src=frame.dataset.src;frame.dataset.loaded='1';}
- }
- // CBO 4.6.x page-open refresh: render data-dependent views when actually opened.
- // This avoids a stale/empty first render if live/auth data became ready after initial renderAll().
- if(id==='rounds') renderRounds();
- if(id==='statistics') cboLoadSeasonStats().catch(()=>{});
- document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));'''
+          old="function showPage(id,btn){\n const target=document.getElementById(id);\n if(!target) return;\n if(id==='tour'){\n   const frame=document.getElementById('onTourMemberFrame');\n   if(frame&&!frame.dataset.loaded){frame.src=frame.dataset.src;frame.dataset.loaded='1';}\n }\n document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));"
+          new="function showPage(id,btn){\n const target=document.getElementById(id);\n if(!target) return;\n if(id==='tour'){\n   const frame=document.getElementById('onTourMemberFrame');\n   if(frame&&!frame.dataset.loaded){frame.src=frame.dataset.src;frame.dataset.loaded='1';}\n }\n // CBO 4.6.x page-open refresh: render data-dependent views when actually opened.\n // This avoids a stale/empty first render if live/auth data became ready after initial renderAll().\n if(id==='rounds') renderRounds();\n if(id==='statistics') cboLoadSeasonStats().catch(()=>{});\n document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p===target));"
           if s.count(old)!=1:
               raise SystemExit(f'Expected exactly one showPage marker, found {s.count(old)}. No change made.')
           s=s.replace(old,new,1)
