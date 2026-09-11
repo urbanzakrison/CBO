@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#163a2b">
+  <title>CBO · Min profil</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#173126;background:#f3f0e7}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:#f3f0e7}
+    header{background:#163a2b;color:#fff;padding:18px 18px 16px}
+    header h1{font-size:22px;margin:0 0 4px}
+    header p{margin:0;opacity:.78;font-size:14px}
+    main{max-width:620px;margin:0 auto;padding:18px}
+    .card{background:#fff;border:1px solid #d9d5c8;border-radius:16px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+    .sub{font-size:14px;line-height:1.45;color:#5e685f;margin-bottom:16px}
+    label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}
+    input{width:100%;font:inherit;padding:13px 12px;border:1px solid #b9c0b9;border-radius:10px;background:#fff}
+    input:focus{outline:2px solid #567d68;outline-offset:1px}
+    button,a.button{display:block;width:100%;border:0;border-radius:10px;padding:13px 14px;font:inherit;font-weight:700;text-align:center;text-decoration:none;cursor:pointer}
+    button.primary{background:#163a2b;color:#fff;margin-top:16px}
+    button.primary:disabled{opacity:.55;cursor:default}
+    a.button{background:#e8ece8;color:#173126;margin-top:10px}
+    .status{min-height:22px;margin-top:12px;font-size:14px;line-height:1.4}
+    .ok{color:#17652f}.err{color:#9f2626}.wait{color:#5e685f}
+    .identity{font-weight:700;margin-bottom:4px}
+    .hidden{display:none!important}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⛳ Min profil</h1>
+    <p>Classic Boys Open</p>
+  </header>
+  <main>
+    <div class="card">
+      <div id="identity" class="identity">Kontrollerar CBO-session…</div>
+      <div class="sub">Du kan byta din personliga CBO-kod själv. Koden måste vara minst 8 tecken. Om du glömmer koden kan CBO-admin skapa en ny tillfällig kod.</div>
+
+      <div id="form" class="hidden">
+        <label for="newCode">Ny CBO-kod</label>
+        <input id="newCode" type="password" minlength="8" maxlength="64" autocomplete="new-password" placeholder="Minst 8 tecken">
+
+        <label for="confirmCode">Bekräfta ny CBO-kod</label>
+        <input id="confirmCode" type="password" minlength="8" maxlength="64" autocomplete="new-password" placeholder="Skriv samma kod igen">
+
+        <button id="saveButton" class="primary" type="button">Ändra min CBO-kod</button>
+      </div>
+
+      <div id="status" class="status wait"></div>
+      <a class="button" href="./">Tillbaka till CBO</a>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+  (()=>{
+    const identity=document.getElementById('identity');
+    const form=document.getElementById('form');
+    const status=document.getElementById('status');
+    const codeEl=document.getElementById('newCode');
+    const confirmEl=document.getElementById('confirmCode');
+    const button=document.getElementById('saveButton');
+    let sb=null;
+
+    function setStatus(text,cls='wait'){
+      status.textContent=text||'';
+      status.className='status '+cls;
+    }
+
+    async function boot(){
+      if(!window.CBO_SUPABASE_URL||!window.CBO_SUPABASE_PUBLISHABLE_KEY||!window.supabase?.createClient){
+        identity.textContent='CBO kunde inte startas.';
+        setStatus('Supabase-konfiguration saknas.','err');
+        return;
+      }
+      sb=window.supabase.createClient(window.CBO_SUPABASE_URL,window.CBO_SUPABASE_PUBLISHABLE_KEY);
+      const {data:{session},error:sessionError}=await sb.auth.getSession();
+      if(sessionError||!session){
+        identity.textContent='Du är inte inloggad.';
+        setStatus('Logga in i CBO först och öppna sedan Min profil igen.','err');
+        return;
+      }
+      const {data,error}=await sb.rpc('cbo_current_player');
+      const row=Array.isArray(data)?data[0]:data;
+      if(error||!row){
+        identity.textContent='CBO-medlem kunde inte verifieras.';
+        setStatus(error?.message||'Kontot är inte kopplat till en aktiv CBO-medlem.','err');
+        return;
+      }
+      identity.textContent='Inloggad som '+row.name;
+      form.classList.remove('hidden');
+      setStatus('');
+    }
+
+    button.addEventListener('click',async()=>{
+      const code=String(codeEl.value||'');
+      const confirmation=String(confirmEl.value||'');
+      if(code.length<8){setStatus('Koden måste vara minst 8 tecken.','err');return;}
+      if(code!==confirmation){setStatus('Koderna är inte identiska.','err');return;}
+      if(!sb){setStatus('CBO-session saknas.','err');return;}
+
+      button.disabled=true;
+      setStatus('Ändrar kod…','wait');
+      try{
+        const {data:{session},error:sessionError}=await sb.auth.getSession();
+        if(sessionError)throw sessionError;
+        if(!session?.access_token)throw new Error('Din CBO-session saknas. Logga in igen.');
+        const {data,error}=await sb.functions.invoke('member-cbo-code',{
+          body:{new_code:code},
+          headers:{Authorization:`Bearer ${session.access_token}`}
+        });
+        if(error){
+          let detail='';
+          try{
+            const ctx=error.context;
+            if(ctx&&typeof ctx.json==='function'){
+              const payload=await ctx.json();
+              detail=payload?.error||payload?.message||'';
+            }else if(ctx&&typeof ctx.text==='function')detail=await ctx.text();
+          }catch(_){}
+          throw new Error(detail||error.message||'Koden kunde inte ändras.');
+        }
+        if(!data?.ok)throw new Error(data?.error||'Koden kunde inte ändras.');
+        codeEl.value='';
+        confirmEl.value='';
+        setStatus('✅ Din CBO-kod är ändrad.','ok');
+      }catch(e){
+        setStatus('Koden kunde inte ändras: '+(e?.message||String(e)),'err');
+      }finally{
+        button.disabled=false;
+      }
+    });
+
+    boot();
+  })();
+  </script>
+</body>
+</html>
