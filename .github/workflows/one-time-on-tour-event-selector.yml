@@ -1,0 +1,53 @@
+name: One-time On Tour event selector patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-on-tour-event-selector.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch index.html safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          old_panel = '''   <div id="onTourAdminPanel" class="card hidden" style="border-left:5px solid #2c7773">\n    <div class="cardhead"><div><h2>On Tour</h2><div class="sub">Separat importflöde för golfresor och tävlingar utanför ordinarie CBO-serie.</div></div><span class="badge" style="background:#dcefed;color:#165d59">ON TOUR</span></div>\n    <div class="notice" style="margin-top:10px"><strong>On Tour-import förbereds.</strong><br>Ingen bildtolkning eller publicering är ansluten i detta steg. Den ordinarie CBO-importen påverkas inte.</div>\n   </div>'''
+
+          new_panel = '''   <div id="onTourAdminPanel" class="card hidden" style="border-left:5px solid #2c7773">\n    <div class="cardhead"><div><h2>On Tour</h2><div class="sub">Separat importflöde för golfresor och tävlingar utanför ordinarie CBO-serie.</div></div><span class="badge" style="background:#dcefed;color:#165d59">ON TOUR</span></div>\n    <label for="onTourAdminEventSelect">Event</label>\n    <select id="onTourAdminEventSelect" disabled>\n      <option value="">Välj On Tour-event…</option>\n    </select>\n    <div id="onTourAdminEventStatus" class="notice" style="margin-top:10px"><strong>Event hämtas först när On Tour väljs.</strong><br>Listan läses via CBO:s befintliga On Tour-RPC och skriver ingen data.</div>\n    <div class="notice" style="margin-top:10px"><strong>Nästa steg:</strong><br>När eventvalet är verifierat kopplas separat runda, bildtolkning och publicering på här. Den ordinarie CBO-importen påverkas inte.</div>\n   </div>'''
+
+          if s.count(old_panel) != 1:
+              raise SystemExit(f'Expected exactly one On Tour panel, found {s.count(old_panel)}. No change made.')
+          s = s.replace(old_panel, new_panel, 1)
+
+          old_script = '''<script id="onTourAdminDestinationScript">\nfunction cboAdminImportDestinationChanged(value){\n  const selected=value==='tour'?'tour':'cbo';\n  const tour=document.getElementById('onTourAdminPanel');\n  const gb=document.getElementById('gamebookImportBox');\n  const cboCard=gb?gb.closest('.card'):null;\n  const help=document.getElementById('adminImportDestinationHelp');\n  if(tour)tour.classList.toggle('hidden',selected!=='tour');\n  if(cboCard)cboCard.classList.toggle('hidden',selected==='tour');\n  if(help){\n    help.innerHTML=selected==='tour'\n      ? '<strong>On Tour valt.</strong><br>On Tour får ett separat import- och publiceringsflöde. Ingen CBO-data skrivs från den grenen.'\n      : '<strong>CBO-omgång är förvald.</strong><br>Den befintliga CBO-importen och publiceringen används oförändrad.';\n  }\n}\n</script>'''
+
+          new_script = '''<script id="onTourAdminDestinationScript">\nlet CBO_TOUR_ADMIN_EVENTS_LOADED=false;\n\nasync function cboAdminLoadTourEvents(){\n  const select=document.getElementById('onTourAdminEventSelect');\n  const status=document.getElementById('onTourAdminEventStatus');\n  if(!select||!status)return;\n  if(CBO_TOUR_ADMIN_EVENTS_LOADED)return;\n  if(!window.CBO_SUPABASE_CLIENT){\n    status.innerHTML='<strong>Kan inte hämta event.</strong><br>Supabase-klienten saknas.';\n    return;\n  }\n  select.disabled=true;\n  status.innerHTML='<strong>Hämtar On Tour-event…</strong>';\n  try{\n    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_tour_events_feed');\n    if(error)throw error;\n    const rows=Array.isArray(data)?data:[];\n    select.replaceChildren();\n    const first=document.createElement('option');\n    first.value='';\n    first.textContent='Välj On Tour-event…';\n    select.appendChild(first);\n    rows.forEach(e=>{\n      const opt=document.createElement('option');\n      opt.value=String(e.id||'');\n      const year=e.event_year?` · ${e.event_year}`:'';\n      opt.textContent=`${e.name||'On Tour-event'}${year}`;\n      select.appendChild(opt);\n    });\n    select.disabled=rows.length===0;\n    CBO_TOUR_ADMIN_EVENTS_LOADED=true;\n    status.innerHTML=rows.length\n      ? `<strong>${rows.length} event hittades.</strong><br>Välj event för nästa On Tour-runda.`\n      : '<strong>Inga On Tour-event hittades.</strong>';\n  }catch(e){\n    select.disabled=true;\n    status.innerHTML=`<strong>Event kunde inte hämtas.</strong><br>${String(e?.message||e)}`;\n  }\n}\n\nfunction cboAdminImportDestinationChanged(value){\n  const selected=value==='tour'?'tour':'cbo';\n  const tour=document.getElementById('onTourAdminPanel');\n  const gb=document.getElementById('gamebookImportBox');\n  const cboCard=gb?gb.closest('.card'):null;\n  const help=document.getElementById('adminImportDestinationHelp');\n  if(tour)tour.classList.toggle('hidden',selected!=='tour');\n  if(cboCard)cboCard.classList.toggle('hidden',selected==='tour');\n  if(help){\n    help.innerHTML=selected==='tour'\n      ? '<strong>On Tour valt.</strong><br>On Tour får ett separat import- och publiceringsflöde. Ingen CBO-data skrivs från den grenen.'\n      : '<strong>CBO-omgång är förvald.</strong><br>Den befintliga CBO-importen och publiceringen används oförändrad.';\n  }\n  if(selected==='tour')cboAdminLoadTourEvents();\n}\n</script>'''
+
+          if s.count(old_script) != 1:
+              raise SystemExit(f'Expected exactly one On Tour destination script, found {s.count(old_script)}. No change made.')
+          s = s.replace(old_script, new_script, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit isolated event selector change
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add On Tour admin event selector via RPC"
+          git push origin HEAD:main
