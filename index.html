@@ -394,7 +394,12 @@ button{cursor:pointer}
 
    <div id="onTourAdminPanel" class="card hidden" style="border-left:5px solid #2c7773">
     <div class="cardhead"><div><h2>On Tour</h2><div class="sub">Separat importflöde för golfresor och tävlingar utanför ordinarie CBO-serie.</div></div><span class="badge" style="background:#dcefed;color:#165d59">ON TOUR</span></div>
-    <div class="notice" style="margin-top:10px"><strong>On Tour-import förbereds.</strong><br>Ingen bildtolkning eller publicering är ansluten i detta steg. Den ordinarie CBO-importen påverkas inte.</div>
+    <label for="onTourAdminEventSelect">Event</label>
+    <select id="onTourAdminEventSelect" disabled>
+      <option value="">Välj On Tour-event…</option>
+    </select>
+    <div id="onTourAdminEventStatus" class="notice" style="margin-top:10px"><strong>Event hämtas först när On Tour väljs.</strong><br>Listan läses via CBO:s befintliga On Tour-RPC och skriver ingen data.</div>
+    <div class="notice" style="margin-top:10px"><strong>Nästa steg:</strong><br>När eventvalet är verifierat kopplas separat runda, bildtolkning och publicering på här. Den ordinarie CBO-importen påverkas inte.</div>
    </div>
 
    <div class="card">
@@ -2414,6 +2419,46 @@ window.addEventListener('load',()=>{
 
 
 <script id="onTourAdminDestinationScript">
+let CBO_TOUR_ADMIN_EVENTS_LOADED=false;
+
+async function cboAdminLoadTourEvents(){
+  const select=document.getElementById('onTourAdminEventSelect');
+  const status=document.getElementById('onTourAdminEventStatus');
+  if(!select||!status)return;
+  if(CBO_TOUR_ADMIN_EVENTS_LOADED)return;
+  if(!window.CBO_SUPABASE_CLIENT){
+    status.innerHTML='<strong>Kan inte hämta event.</strong><br>Supabase-klienten saknas.';
+    return;
+  }
+  select.disabled=true;
+  status.innerHTML='<strong>Hämtar On Tour-event…</strong>';
+  try{
+    const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_tour_events_feed');
+    if(error)throw error;
+    const rows=Array.isArray(data)?data:[];
+    select.replaceChildren();
+    const first=document.createElement('option');
+    first.value='';
+    first.textContent='Välj On Tour-event…';
+    select.appendChild(first);
+    rows.forEach(e=>{
+      const opt=document.createElement('option');
+      opt.value=String(e.id||'');
+      const year=e.event_year?` · ${e.event_year}`:'';
+      opt.textContent=`${e.name||'On Tour-event'}${year}`;
+      select.appendChild(opt);
+    });
+    select.disabled=rows.length===0;
+    CBO_TOUR_ADMIN_EVENTS_LOADED=true;
+    status.innerHTML=rows.length
+      ? `<strong>${rows.length} event hittades.</strong><br>Välj event för nästa On Tour-runda.`
+      : '<strong>Inga On Tour-event hittades.</strong>';
+  }catch(e){
+    select.disabled=true;
+    status.innerHTML=`<strong>Event kunde inte hämtas.</strong><br>${String(e?.message||e)}`;
+  }
+}
+
 function cboAdminImportDestinationChanged(value){
   const selected=value==='tour'?'tour':'cbo';
   const tour=document.getElementById('onTourAdminPanel');
@@ -2427,6 +2472,7 @@ function cboAdminImportDestinationChanged(value){
       ? '<strong>On Tour valt.</strong><br>On Tour får ett separat import- och publiceringsflöde. Ingen CBO-data skrivs från den grenen.'
       : '<strong>CBO-omgång är förvald.</strong><br>Den befintliga CBO-importen och publiceringen används oförändrad.';
   }
+  if(selected==='tour')cboAdminLoadTourEvents();
 }
 </script>
 </body></html>
