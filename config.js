@@ -121,3 +121,54 @@ window.CBO_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7OxIpZoLDJGUCg27sJhXcg_oor
     if(document.visibilityState==='visible') setTimeout(refresh,250);
   });
 })();
+
+// CBO 4.6.x – message refresh fallback.
+// Realtime remains primary. While Klubbhuset is open, compare a compact
+// signature of the feed and reload only when a message has actually changed.
+(function cboClubhouseMessageRefreshFallback(){
+  let lastSignature=null;
+  let busy=false;
+
+  function signature(rows){
+    return JSON.stringify((Array.isArray(rows)?rows:[]).map(r=>[
+      String(r.id||''),
+      String(r.created_at||''),
+      String(r.edited_at||''),
+      String(r.deleted_at||''),
+      String(r.body||''),
+      String(r.image_path||'')
+    ]));
+  }
+
+  async function tick(){
+    if(busy || document.visibilityState==='hidden') return;
+    if(!document.getElementById('clubhouse')?.classList.contains('active')){
+      lastSignature=null;
+      return;
+    }
+    if(!window.CBO_SUPABASE_CLIENT) return;
+
+    busy=true;
+    try{
+      const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_feed',{p_limit:100});
+      if(error) throw error;
+      const next=signature(data);
+      if(lastSignature===null){
+        lastSignature=next;
+        return;
+      }
+      if(next!==lastSignature){
+        lastSignature=next;
+        if(typeof cboClubhouseLoad==='function') await cboClubhouseLoad();
+      }
+    }catch(e){
+      console.warn('Klubbhuset message refresh misslyckades',e);
+    }finally{
+      busy=false;
+    }
+  }
+
+  window.addEventListener('load',()=>{
+    setInterval(tick,1500);
+  });
+})();
