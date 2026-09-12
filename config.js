@@ -88,3 +88,36 @@ window.CBO_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7OxIpZoLDJGUCg27sJhXcg_oor
     setInterval(tick,1500);
   });
 })();
+
+// CBO 4.6.x – unread refresh fallback.
+// Existing Realtime remains primary. This only re-checks unread state when the
+// app is visible so background/resume and late auth initialization cannot leave
+// the navigation badge stale. It never marks Clubhouse messages as read.
+(function cboClubhouseUnreadRefreshFallback(){
+  let busy=false;
+
+  async function refresh(){
+    if(busy || document.visibilityState==='hidden') return;
+    if(document.getElementById('clubhouse')?.classList.contains('active')) return;
+    if(typeof cboClubhouseRefreshUnread!=='function') return;
+
+    busy=true;
+    try{
+      await cboClubhouseRefreshUnread();
+    }catch(e){
+      console.warn('Klubbhuset unread refresh misslyckades',e);
+    }finally{
+      busy=false;
+    }
+  }
+
+  window.addEventListener('load',()=>{
+    setTimeout(refresh,1800);
+    setTimeout(refresh,4500);
+    setInterval(refresh,3000);
+  });
+
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible') setTimeout(refresh,250);
+  });
+})();
