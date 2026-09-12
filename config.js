@@ -172,3 +172,33 @@ window.CBO_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7OxIpZoLDJGUCg27sJhXcg_oor
     setInterval(tick,1500);
   });
 })();
+
+// CBO 4.6.x – clear the installed app icon badge when Klubbhuset is opened.
+// Badging is progressive enhancement: unsupported browsers simply ignore it.
+(function cboClubhouseAppIconBadgeClear(){
+  async function clearIfOpen(){
+    if(!document.getElementById('clubhouse')?.classList.contains('active')) return;
+    if(!('clearAppBadge' in navigator)) return;
+    try{
+      await navigator.clearAppBadge();
+    }catch(e){
+      console.warn('CBO appikon-badge kunde inte rensas',e);
+    }
+  }
+
+  function onClubhouseNav(event){
+    const target=event.target;
+    if(!target || typeof target.closest!=="function") return;
+    if(!target.closest('button[data-page="clubhouse"]')) return;
+    setTimeout(clearIfOpen,60);
+  }
+
+  document.addEventListener('pointerup',onClubhouseNav);
+  document.addEventListener('click',event=>{
+    if(event.detail===0) onClubhouseNav(event);
+  });
+  window.addEventListener('load',()=>setTimeout(clearIfOpen,600));
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible') setTimeout(clearIfOpen,250);
+  });
+})();
