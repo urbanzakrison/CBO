@@ -10,7 +10,11 @@ self.addEventListener('push',event=>{
   let data={}; try{data=event.data?event.data.json():{}}catch(_){data={body:event.data?.text?.()||''}}
   const title=data.title||'🏆 Classic Boys Open';
   const options={body:data.body||'En ny CBO-omgång är publicerad.',icon:'./cbo-icon-192.png',badge:'./cbo-icon-192.png',data:{url:data.url||'./'},tag:data.tag||'cbo-winner',renotify:true};
-  event.waitUntil(self.registration.showNotification(title,options));
+  const tasks=[self.registration.showNotification(title,options)];
+  if(String(data.tag||'').startsWith('cbo-clubhouse-') && 'setAppBadge' in self.navigator){
+    tasks.push(self.navigator.setAppBadge(1).catch(()=>{}));
+  }
+  event.waitUntil(Promise.all(tasks));
 });
 self.addEventListener('notificationclick',event=>{
   event.notification.close(); const target=new URL(event.notification.data?.url||'./',self.location.origin).href;
