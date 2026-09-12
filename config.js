@@ -42,40 +42,49 @@ window.CBO_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7OxIpZoLDJGUCg27sJhXcg_oor
   else mount();
 })();
 
-// CBO 4.6.x – isolated recovery for Clubhouse reaction Realtime.
-// If the original reaction channel exists but never reached JOINED/SUBSCRIBED,
-// clear it and let the existing Clubhouse open flow create a fresh channel.
-(function cboClubhouseReactionRealtimeRecovery(){
-  async function recover(){
+// CBO 4.6.x – reaction refresh fallback.
+// Postgres Changes remains enabled, but while Klubbhuset is open we verify the
+// compact reaction feed periodically. A changed signature triggers one normal
+// Clubhouse reload, so other members see reactions without reloading the app.
+(function cboClubhouseReactionRefreshFallback(){
+  let lastSignature=null;
+  let busy=false;
+
+  function signature(rows){
+    return JSON.stringify((Array.isArray(rows)?rows:[])
+      .map(r=>[String(r.message_id||''),String(r.emoji||''),Number(r.reaction_count||0),!!r.reacted_by_me])
+      .sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  }
+
+  async function tick(){
+    if(busy || document.visibilityState==='hidden') return;
+    if(!document.getElementById('clubhouse')?.classList.contains('active')){
+      lastSignature=null;
+      return;
+    }
+    if(!window.CBO_SUPABASE_CLIENT) return;
+
+    busy=true;
     try{
-      if(typeof CBO_CLUBHOUSE_REACTIONS_CHANNEL==="undefined") return;
-      const channel=CBO_CLUBHOUSE_REACTIONS_CHANNEL;
-      if(!channel) return;
-
-      const state=String(channel.state||'').toLowerCase();
-      if(state==='joined'||state==='joining') return;
-
-      if(window.CBO_SUPABASE_CLIENT && typeof window.CBO_SUPABASE_CLIENT.removeChannel==='function'){
-        try{ await window.CBO_SUPABASE_CLIENT.removeChannel(channel); }catch(_){ }
+      const {data,error}=await window.CBO_SUPABASE_CLIENT.rpc('cbo_clubhouse_reactions_feed');
+      if(error) throw error;
+      const next=signature(data);
+      if(lastSignature===null){
+        lastSignature=next;
+        return;
       }
-      CBO_CLUBHOUSE_REACTIONS_CHANNEL=null;
-
-      if(document.getElementById('clubhouse')?.classList.contains('active') && typeof cboClubhouseOpen==='function'){
-        cboClubhouseOpen().catch(()=>{});
+      if(next!==lastSignature){
+        lastSignature=next;
+        if(typeof cboClubhouseLoad==='function') await cboClubhouseLoad();
       }
     }catch(e){
-      console.warn('Klubbhuset reaction Realtime recovery misslyckades',e);
+      console.warn('Klubbhuset reaction refresh misslyckades',e);
+    }finally{
+      busy=false;
     }
   }
 
-  document.addEventListener('click',function(event){
-    const target=event.target;
-    if(!target || typeof target.closest!=='function') return;
-    if(!target.closest('button[data-page="clubhouse"]')) return;
-    setTimeout(recover,1200);
-  });
-
-  document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible') setTimeout(recover,1200);
+  window.addEventListener('load',()=>{
+    setInterval(tick,1500);
   });
 })();
