@@ -53,16 +53,42 @@ function primaryScoreForRound(r){
  return out;
 }
 function eventTotals(e){
- const rounds=(e.rounds||[]).filter(r=>r.primary_metric);
+ const rounds=(e.rounds||[]).filter(r=>r.primary_metric).sort((a,b)=>Number(a.round_no)-Number(b.round_no));
  if(!rounds.length)return {rows:[],rounds:0,direction:null,label:'Resultat'};
  const families=[...new Set(rounds.map(r=>String(r.primary_metric).startsWith('stableford')?'stableford':'stroke'))];
  if(families.length!==1)return {rows:[],rounds:rounds.length,direction:null,label:'Blandade tävlingsformer'};
  const direction=families[0]==='stableford'?'desc':'asc';
  const map=new Map();
- rounds.forEach(r=>{const scores=primaryScoreForRound(r);for(const [name,s] of scores){if(!map.has(name))map.set(name,{name,total:0,rounds:0,complete:true});const p=map.get(name);p.total+=s.value;p.rounds++;p.complete=p.complete&&s.complete}});
+ rounds.forEach(r=>{
+  const scores=primaryScoreForRound(r);
+  const byName=new Map((r.results||[]).filter(x=>x.metric===r.primary_metric).map(x=>[String(x.participant_name||'').trim(),x]));
+  for(const [name,s] of scores){
+   if(!map.has(name))map.set(name,{name,total:0,rounds:0,complete:true,lastShcp:null});
+   const p=map.get(name);p.total+=s.value;p.rounds++;p.complete=p.complete&&s.complete;
+   const raw=byName.get(name)?.displayed_hcp;
+   const shcp=raw===null||raw===undefined||String(raw).trim()===''?null:Number(raw);
+   p.lastShcp=Number.isFinite(shcp)?shcp:null;
+  }
+ });
  let rows=[...map.values()].map(p=>({...p,complete:p.complete&&p.rounds===rounds.length}));
- rows.sort((a,b)=>{if(a.complete!==b.complete)return a.complete?-1:1;if(a.complete&&b.complete){const d=direction==='asc'?a.total-b.total:b.total-a.total;if(d)return d;const aw=a.name===e.winner_name,bw=b.name===e.winner_name;if(aw!==bw)return aw?-1:1}return a.name.localeCompare(b.name,'sv')});
- let last=null,lastRank=0;rows.forEach((p,i)=>{if(!p.complete){p.rank=null;return}if(i===0){p.rank=1;last=p.total;lastRank=1;return}const same=p.total===last;if(same&&!(p.name===e.winner_name||rows[i-1]?.name===e.winner_name)){p.rank=lastRank}else{p.rank=i+1;lastRank=p.rank}last=p.total});
+ rows.sort((a,b)=>{
+  if(a.complete!==b.complete)return a.complete?-1:1;
+  if(a.complete&&b.complete){
+   const d=direction==='asc'?a.total-b.total:b.total-a.total;
+   if(d)return d;
+   if(a.lastShcp!=null&&b.lastShcp!=null&&a.lastShcp!==b.lastShcp)return a.lastShcp-b.lastShcp;
+  }
+  return a.name.localeCompare(b.name,'sv');
+ });
+ let last=null,lastRank=0;
+ rows.forEach((p,i)=>{
+  if(!p.complete){p.rank=null;return}
+  const tied=last&&p.total===last.total&&
+   (p.lastShcp==null||last.lastShcp==null||p.lastShcp===last.lastShcp);
+  p.rank=tied?lastRank:i+1;
+  if(!tied)lastRank=p.rank;
+  last=p;
+ });
  return {rows,rounds:rounds.length,direction,label:families[0]==='stableford'?'Poängbogey total':'Nettoslag total'};
 }
 function totalBlock(e){const t=eventTotals(e);if(!t.rows.length)return `<div class="card"><div class="empty">Totalställning kan inte beräknas säkert för detta event.</div></div>`;const rule=t.direction==='asc'?'Lägst totalsumma vinner':'Högst totalsumma vinner';return `<div class="card"><div class="total-head"><div><div class="total-title">Totalställning</div><div class="sub">${esc(t.label)}</div></div><div class="total-rule">${esc(rule)}<br>${t.rounds} rundor</div></div>${t.rows.map(p=>`<div class="total-row ${p.name===e.winner_name?'winner-row':''}"><div class="rank ${rankClass(p.rank)}">${p.rank??'–'}</div><div><div class="rname">${p.name===e.winner_name?'🏆 ':''}${esc(p.name)}</div><div class="total-rounds">${p.rounds}/${t.rounds} rundor${p.complete?'':' · ej komplett'}</div></div><div class="total-score">${esc(p.total)}${t.direction==='desc'?' p':''}</div></div>`).join('')}</div>`}
