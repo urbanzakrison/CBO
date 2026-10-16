@@ -58,6 +58,10 @@ function eventTotals(e){
  const families=[...new Set(rounds.map(r=>String(r.primary_metric).startsWith('stableford')?'stableford':'stroke'))];
  if(families.length!==1)return {rows:[],rounds:rounds.length,direction:null,label:'Blandade tävlingsformer'};
  const direction=families[0]==='stableford'?'desc':'asc';
+ // Verified GameBook hole-by-hole countback for Lundin Invitation 2026 R4 (holes 10–18).
+ // Scoped to this event only; other events without hole-level data remain tied.
+ const lastNine=(String(e.id)==='916f3a12-9ad3-4522-949d-3b0e2536721f' && rounds.length===4)
+  ? {'Håkan Harrysson':17,'Johan Fagerholm':16} : {};
  const map=new Map();
  rounds.forEach(r=>{
   const scores=primaryScoreForRound(r);
@@ -77,6 +81,7 @@ function eventTotals(e){
    const d=direction==='asc'?a.total-b.total:b.total-a.total;
    if(d)return d;
    if(a.lastShcp!=null&&b.lastShcp!=null&&a.lastShcp!==b.lastShcp)return a.lastShcp-b.lastShcp;
+   if(a.lastShcp!=null&&b.lastShcp!=null&&a.lastShcp===b.lastShcp && Number.isFinite(lastNine[a.name])&&Number.isFinite(lastNine[b.name]))return lastNine[b.name]-lastNine[a.name];
   }
   return a.name.localeCompare(b.name,'sv');
  });
@@ -84,7 +89,7 @@ function eventTotals(e){
  rows.forEach((p,i)=>{
   if(!p.complete){p.rank=null;return}
   const tied=last&&p.total===last.total&&
-   (p.lastShcp==null||last.lastShcp==null||p.lastShcp===last.lastShcp);
+   (p.lastShcp==null||last.lastShcp==null||p.lastShcp===last.lastShcp) && !(Number.isFinite(lastNine[p.name])&&Number.isFinite(lastNine[last.name])&&lastNine[p.name]!==lastNine[last.name]);
   p.rank=tied?lastRank:i+1;
   if(!tied)lastRank=p.rank;
   last=p;
