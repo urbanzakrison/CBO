@@ -15,6 +15,12 @@ Officiella källor, kontrollerade 19 oktober 2026:
 - https://supabase.com/docs/guides/local-development
 - https://supabase.com/docs/guides/local-development/cli/testing-and-linting
 
+## Samlat slutresultat
+
+**Senaste fullständiga körningen är grön:** https://github.com/urbanzakrison/CBO/actions/runs/39239136183 — verifierad commit `01d63d91855219c3f7284419134553ecbdf24172`.
+
+Båda jobben slutfördes med success: `postgres-concurrency` och `supabase-local`, inklusive cleanup. 7 ursprungliga tester, 8 verkliga samtidighetsscenarier, riktig lokal Supabase Auth/RLS/mobilintegration, officiella lokala Security Advisors och baseline-jämförd SQL-lint passerar. Inga betalda tjänster eller produktionsresurser användes. Båda QA-entrypoints har dessutom manuellt verifierats avvisa icke-lokala mål innan någon anslutning görs.
+
 ## Genomförd verifiering
 
 ### PostgreSQL 17.6, separata sessioner — PASS
@@ -52,7 +58,11 @@ Testet bygger en relevant vanlig-CBO-tabell/RPC-del runt verklig lokal Supabase 
 
 ### Officiella lokala Security Advisors och SQL-lint
 
-Nästa CI-körning lägger till `supabase db advisors --local --type security` och `supabase db lint --local --schema public`. CLI:s `--help` har verifierat att båda stödjer lokal databas. PASS ska registreras först efter körningen; en systemkatalogkontroll ensam räknas inte som en genomförd Advisor-körning.
+Officiella `supabase db advisors --local --type security --level warn --fail-on error` kördes i https://github.com/urbanzakrison/CBO/actions/runs/39238677230 och rapporterade `No issues found`. Det avser kontroll på varnings-/felnivå i den lokala testdatabasen, inte alla plattformsinställningar i hosted produktion.
+
+Samma körnings SQL-lint rapporterade ett befintligt fynd i den orörda `cbo_season_stats`: `42703 column "season_year" does not exist`, för en dynamisk reservfråga som bara väljs om tabellen saknar `year` och i stället har `season_year`. Vår faktiska modell har `year`; runtime-grenen och statistiktesterna passerar. Hela workflow-körningen blev därför röd trots att Auth/behörighetstesterna och Advisors-kommandot passerade. Detta redovisas öppet och räknas inte som en grön total körning.
+
+Uppföljningen kör den officiella SQL-linten både före och efter release-SQL och kräver identiska normaliserade fynd. Därmed tillåts inte ett nytt lintfel eller en ny varning i säsongsleveransen, samtidigt som den gamla statistikfunktionen inte byggs om för att tysta en testkontroll. Ingen hel funktion eller felkategori undantas generellt. Uppföljningen i run `39239136183` är genomförd och godkänd: ett identiskt befintligt lintfynd före/efter, **noll nya fynd**. Security Advisors rapporterar återigen `No issues found` på varnings-/felnivå. Det finns alltså inte ett generellt undantag som gör att okända fel ignoreras.
 
 ## Kvarvarande gränser
 
@@ -69,3 +79,9 @@ Nästa CI-körning lägger till `supabase db advisors --local --type security` o
 - Paketversioner är låsta; GitHub checkout/setup-node är låsta till verifierade commit-SHA. Tillagda paket är enbart dev dependencies.
 
 Ingen merge eller produktionsinstallation är utförd eller automatiskt godkänd av ett grönt test. Slutlig GO/NO-GO ska väga verifierade kärnkrav och uttryckligt kvarvarande tjänste-/enhetsunderlag. Ett betalt stagingprojekt behöver däremot inte godkännas för att fortsätta dessa tester.
+
+## Produktionsbedömning och omfattning
+
+Kostnadsfrågan är löst för kärn-QA: **GO för fortsatt kostnadsfri isolerad verifiering**. Detta behöver inte ett betalt Supabase-projekt. Tidigare miljöblockeringar för separata PG-sessioner och verkliga Auth-sessioner har fått fungerande alternativ.
+
+**NO-GO för automatisk merge/produktionsinstallation.** Ett grönt tekniskt kärntest innebär ingen publiceringsauktorisation. Det kvarvarande underlaget för externa tjänster och verkliga enheter ska antingen verifieras separat utan nya kostnader, med befintliga godkända resurser, eller uttryckligen bedömas/accepteras av projektledningen med hänvisning till oförändrad verifierad baseline. Inga betalda OpenAI-anrop används för att fylla den luckan.

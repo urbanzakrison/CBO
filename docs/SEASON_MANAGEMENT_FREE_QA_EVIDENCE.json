@@ -1,45 +1,92 @@
 {
-  "engine": "PostgreSQL 17.6 (Debian 17.6-2.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
-  "sessionPids": [
-    93,
-    94
-  ],
-  "independentSessions": true,
-  "scope": "isolated PostgreSQL; synthetic identities; not Supabase Auth/hosted advisors",
-  "tests": [
-    {
-      "name": "two concurrent creates: exactly one prepared season",
-      "status": "PASS"
+  "postgres": {
+    "engine": "PostgreSQL 17.6 (Debian 17.6-2.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "sessionPids": [
+      93,
+      94
+    ],
+    "independentSessions": true,
+    "scope": "isolated PostgreSQL; synthetic identities; not Supabase Auth/hosted advisors",
+    "tests": [
+      {
+        "name": "two concurrent creates: exactly one prepared season",
+        "status": "PASS"
+      },
+      {
+        "name": "two concurrent activations: exactly one succeeds",
+        "status": "PASS"
+      },
+      {
+        "name": "publication holds lock first: activation snapshot includes committed round",
+        "status": "PASS"
+      },
+      {
+        "name": "activation holds lock first: stale publication rejected without partial rows",
+        "status": "PASS"
+      },
+      {
+        "name": "concurrent duplicate round number serialized and rejected",
+        "status": "PASS"
+      },
+      {
+        "name": "concurrent duplicate date serialized and rejected",
+        "status": "PASS"
+      },
+      {
+        "name": "rolled-back activation leaves no partial state or snapshot",
+        "status": "PASS"
+      },
+      {
+        "name": "ordinary role and anonymous EXECUTE restrictions",
+        "status": "PASS"
+      }
+    ],
+    "runUrl": "https://github.com/urbanzakrison/CBO/actions/runs/39237803654",
+    "commit": "0b4e949ea46028ad69b585123551633200bcbd3e"
+  },
+  "supabaseLocal": {
+    "environment": "ephemeral local Supabase in free standard public GitHub runner",
+    "auth": "real independent admin/member/unknown Auth sessions and actual browser auth-client",
+    "checks": [
+      "admin/member login",
+      "DB authorization unaffected by member user_metadata",
+      "anonymous and unknown denied",
+      "RLS denies member table writes",
+      "snapshot table inaccessible",
+      "new RPC EXECUTE/search_path audited",
+      "prepare does not change active year",
+      "explicit UI activation",
+      "empty new leaderboard",
+      "round 1 in 2027",
+      "duplicate rejected",
+      "2026 payload identical",
+      "member admin UI hidden"
+    ],
+    "managedSecurityAdvisors": "Hosted dashboard not used; official CLI local advisors run separately by workflow",
+    "sqlLint": {
+      "baselineIssues": [
+        {
+          "function": "public.cbo_season_stats",
+          "level": "error",
+          "message": "column \"season_year\" does not exist",
+          "sqlState": "42703",
+          "query": "select id from public.seasons where season_year=$1 limit 1"
+        }
+      ],
+      "newIssues": []
     },
-    {
-      "name": "two concurrent activations: exactly one succeeds",
-      "status": "PASS"
-    },
-    {
-      "name": "publication holds lock first: activation snapshot includes committed round",
-      "status": "PASS"
-    },
-    {
-      "name": "activation holds lock first: stale publication rejected without partial rows",
-      "status": "PASS"
-    },
-    {
-      "name": "concurrent duplicate round number serialized and rejected",
-      "status": "PASS"
-    },
-    {
-      "name": "concurrent duplicate date serialized and rejected",
-      "status": "PASS"
-    },
-    {
-      "name": "rolled-back activation leaves no partial state or snapshot",
-      "status": "PASS"
-    },
-    {
-      "name": "ordinary role and anonymous EXECUTE restrictions",
-      "status": "PASS"
+    "paidAPIs": "NOT RUN",
+    "productionAccess": false,
+    "runUrl": "https://github.com/urbanzakrison/CBO/actions/runs/39239136183",
+    "commit": "01d63d91855219c3f7284419134553ecbdf24172",
+    "localSecurityAdvisors": {
+      "result": "PASS",
+      "level": "warn and error",
+      "tool": "Supabase CLI 2.121.0 db advisors --local --type security",
+      "hostedManagementDashboard": "NOT RUN"
     }
-  ],
-  "runUrl": "https://github.com/urbanzakrison/CBO/actions/runs/39237803654",
-  "commit": "0b4e949ea46028ad69b585123551633200bcbd3e"
+  },
+  "safetyGuards": "Both QA entrypoints manually verified to reject non-loopback targets before connecting",
+  "paidCloudResourcesCreated": false,
+  "productionChanges": false
 }

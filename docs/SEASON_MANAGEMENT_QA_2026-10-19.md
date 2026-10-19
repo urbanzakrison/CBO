@@ -1,5 +1,7 @@
 # CBO Season Management v1 – fördjupad QA, 19 oktober 2026
 
+
+> Uppdatering: kostnadsfri GitHub Actions-/lokal Supabase-QA finns nu. Se `SEASON_MANAGEMENT_FREE_QA_2026-10-19.md`. Tidigare uppgifter om att betald staging krävs gäller inte längre kärnverifieringen; äldre miljöresultat nedan är historik.
 **Beslut: fortsatt utkast. Inte godkänd för merge eller produktion.**
 
 Granskad implementation: PR #1, commit `0c3c886a1a7272c8a640b9d0fd857ac18fc1abef`. Denna komplettering ändrar endast tester och dokumentation. Appkod och SQL-implementation är oförändrade.

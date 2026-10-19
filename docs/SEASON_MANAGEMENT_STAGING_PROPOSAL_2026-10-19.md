@@ -1,5 +1,7 @@
 # CBO Season Management v1 — konkret stagingförslag och beslutspunkt
 
+
+> Uppdatering: kostnadsfri GitHub Actions-/lokal Supabase-QA finns nu. Se `SEASON_MANAGEMENT_FREE_QA_2026-10-19.md`. Tidigare uppgifter om att betald staging krävs gäller inte längre kärnverifieringen; äldre miljöresultat nedan är historik.
 Datum: 19 oktober 2026. Underlag: PR #1, head `4bdbacaca10558104cd1f1c87d6ee2fcaf5eb1d5`.
 
 **Rekommendation: NO-GO för produktionsinstallation. Stopp före skapande av ny testmiljö enligt mandatets punkt 9.**
