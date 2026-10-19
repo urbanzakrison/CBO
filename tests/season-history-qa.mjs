@@ -48,6 +48,9 @@ try{
  assert.equal((await rpc('cbo_seasons_status')).active_year,2026);
  assert.deepEqual(await standings(await rpc('cbo_season_data',[2026])),originalStandings);
  await rpc('cbo_season_activate',[2027,2026]);
+ const champion=(await db.query('select p.name,s.official_champion_points from seasons s join players p on p.id=s.official_champion_player_id where s.year=2026')).rows[0];
+ assert.equal(champion.name,originalStandings.total[0].name);
+ assert.equal(Number(champion.official_champion_points),originalStandings.total[0].value);
  const afterStandings=await standings(await rpc('cbo_season_data',[2026]));assert.deepEqual(afterStandings,originalStandings);
  assert.deepEqual(await table('rounds','season_id,round_no'),beforeRounds);
  assert.deepEqual(await table('round_results','round_id,player_id'),beforeResults);
@@ -55,6 +58,6 @@ try{
  for(const y of [2021,2022,2023,2024,2025,2026])assert.deepEqual(await rpc('cbo_season_stats',[y]),beforeStats[y]);
  await db.exec('update players set current_hcp_index=54');
  assert.deepEqual(await standings(await rpc('cbo_season_data',[2026])),originalStandings);
- const report={baselineCommit:'c7952ce0e92225ede30831d09e7b1dfc1779bdf1',environment:'isolated PGlite; sanitized read-only production export; synthetic local auth identity',source:{seasons:source.seasons.length,rounds:source.rounds.length,results:source.results.length},checks:{allSix2026Categories:'identical before installation, after preparation, after activation and after HCP change',roundRows:'identical',resultRows:'identical',champions2011to2025:'identical',stats2021to2026:'identical'},hashes:{standings2026:hash(originalStandings),roundRows:hash(beforeRounds),resultRows:hash(beforeResults),priorSeasons:hash(beforeSeasons),stats:hash(beforeStats)}};
+ const report={baselineCommit:'c7952ce0e92225ede30831d09e7b1dfc1779bdf1',environment:'isolated PGlite; sanitized read-only production export; synthetic local auth identity',source:{seasons:source.seasons.length,rounds:source.rounds.length,results:source.results.length},checks:{allSix2026Categories:'identical before installation, after preparation, after activation and after HCP change',roundRows:'identical',resultRows:'identical',champions2011to2025:'identical',champion2026:'matches original Totalen winner and points',stats2021to2026:'identical'},hashes:{standings2026:hash(originalStandings),roundRows:hash(beforeRounds),resultRows:hash(beforeResults),priorSeasons:hash(beforeSeasons),stats:hash(beforeStats)}};
  await writeFile(new URL('test-results/history-qa.json',root),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
 }finally{await db.close();}

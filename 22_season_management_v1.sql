@@ -77,18 +77,28 @@ begin
  if exists(select 1 from public.rounds where season_id=v_new.id) then raise exception 'Förberedd säsong innehåller redan omgångar. Granskning krävs.'; end if;
  v_data:=public.cbo_season_data(v_old.year);
  if coalesce((v_data->>'ok')::boolean,false) is not true then raise exception 'Slutställningen kunde inte verifieras.'; end if;
- -- Freeze exactly the current live tie-break (points, current HCP, name).
+ -- Points and current HCP determine the champion; an unresolved tie needs review.
  select (p->>'id')::uuid,sum((r->>'points')::numeric) into v_winner,v_points
  from jsonb_array_elements(v_data->'players') p
  join jsonb_array_elements(v_data->'results') r on r->>'player_id'=p->>'id'
  group by p order by sum((r->>'points')::numeric) desc,
  (p->>'current_hcp')::numeric asc nulls last,p->>'name' collate "C" limit 1;
+ if v_old.official_champion_player_id is null and (
+   select count(*) from (
+     select dense_rank() over(order by sum((r->>'points')::numeric) desc,
+       (p->>'current_hcp')::numeric asc nulls last) as place
+     from jsonb_array_elements(v_data->'players') p
+     join jsonb_array_elements(v_data->'results') r on r->>'player_id'=p->>'id'
+     group by p
+   ) ranked where place=1
+ )>1 then raise exception 'Delad förstaplats efter poäng och handicap. Champion måste granskas före säsongsskiftet.'; end if;
  if exists(select 1 from public.rounds where season_id=v_old.id and official) and v_winner is null then raise exception 'Säsongens champion kunde inte fastställas.'; end if;
  insert into public.cbo_season_snapshots(season_id,payload) values(v_old.id,v_data);
  update public.seasons set status='AVSLUTAD',
  official_champion_player_id=coalesce(official_champion_player_id,v_winner),
- official_champion_points=coalesce(official_champion_points,v_points),
- champion_metric=coalesce(champion_metric,'Tävlingspoäng'),champion_value=coalesce(champion_value,v_points)
+ official_champion_points=case when official_champion_player_id is null then coalesce(official_champion_points,v_points) else official_champion_points end,
+ champion_metric=case when official_champion_player_id is null then coalesce(champion_metric,'Tävlingspoäng') else champion_metric end,
+ champion_value=case when official_champion_player_id is null then coalesce(champion_value,v_points) else champion_value end
  where id=v_old.id;
  insert into public.season_players(season_id,player_id,start_hcp)
  select v_new.id,id,current_hcp_index from public.players where coalesce(active,true) and not coalesce(is_test,false)

@@ -121,3 +121,30 @@ test('rollback restores release before use and refuses data-destructive rollback
   assert.equal((await rpc(used,'cbo_seasons_status')).active_year,2026);
  }finally{await used.close();}
 });
+
+
+test('existing champion with incomplete metadata stays exact',async()=>{
+ const db=await setup();
+ try{
+  await publish(db,1,'2026-05-01');
+  await db.query('update seasons set official_champion_player_id=$1 where year=2026',[ids[1]]);
+  const before=(await db.query('select official_champion_player_id,official_champion_points,champion_metric,champion_value,champion_note from seasons where year=2026')).rows[0];
+  await rpc(db,'cbo_season_create',[2027]);await rpc(db,'cbo_season_activate',[2027,2026]);
+  assert.deepEqual((await db.query('select official_champion_player_id,official_champion_points,champion_metric,champion_value,champion_note from seasons where year=2026')).rows[0],before);
+ }finally{await db.close();}
+});
+
+test('unresolved champion tie blocks activation atomically; lower HCP resolves it',async()=>{
+ const db=await setup();
+ try{
+  await publish(db,1,'2026-05-01');
+  await db.exec('update round_results set points=4,playing_hcp=10; update players set current_hcp_index=10');
+  await rpc(db,'cbo_season_create',[2027]);
+  await assert.rejects(rpc(db,'cbo_season_activate',[2027,2026]),/Delad förstaplats/);
+  assert.equal((await rpc(db,'cbo_seasons_status')).active_year,2026);
+  assert.equal((await db.query('select count(*)::int n from cbo_season_snapshots')).rows[0].n,0);
+  await db.query('update round_results set playing_hcp=9 where player_id=$1',[ids[1]]);
+  await rpc(db,'cbo_season_activate',[2027,2026]);
+  assert.equal((await db.query('select official_champion_player_id id from seasons where year=2026')).rows[0].id,ids[1]);
+ }finally{await db.close();}
+});

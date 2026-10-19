@@ -1,5 +1,7 @@
 # CBO Season Management v1 — kostnadsfri QA
 
+Senare slutgranskning och två champion-korrigeringar: [SEASON_MANAGEMENT_RELEASE_REVIEW_2026-10-19.md](SEASON_MANAGEMENT_RELEASE_REVIEW_2026-10-19.md). Tidigare körningsresultat nedan avser sina angivna commits; aktuell HEAD verifieras separat i PR #1.
+
 Det betalda stagingförslaget är inte längre en teknisk förutsättning för kärnverifieringen. Inget Supabase-projekt eller abonnemang har skapats eller ändrats. Appkod, release-SQL, produktion och CBO on Tour är oförändrade av detta arbete.
 
 ## Kostnadsfri väg som faktiskt används

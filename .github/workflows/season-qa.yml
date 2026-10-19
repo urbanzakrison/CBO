@@ -3,11 +3,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - '.github/workflows/season-qa.yml'
-      - 'tests/**'
-      - '22_season_management_v1.sql'
-      - 'package*.json'
 permissions:
   contents: read
 concurrency:
@@ -64,6 +59,8 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/cbo-cli" --save-exact supabase@2.121.0
           npx playwright install --with-deps chromium
+      - name: Controlled GameBook review, publication and mobile regression
+        run: npm run test:browser
       - name: Start ephemeral loopback-only Supabase (no hosted project)
         run: |
           mkdir -p "$RUNNER_TEMP/cbo-free-supabase"
