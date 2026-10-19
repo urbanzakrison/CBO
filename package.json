@@ -1,0 +1,36 @@
+{
+  "name": "cbo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "auth-client.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit tests/*.test.mjs",
+    "test:browser": "node tests/season-browser.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/urbanzakrison/CBO.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/urbanzakrison/CBO/issues"
+  },
+  "homepage": "https://github.com/urbanzakrison/CBO#readme",
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "@supabase/supabase-js": "2.118.0",
+    "pg": "8.16.3",
+    "playwright": "1.62.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  }
+}

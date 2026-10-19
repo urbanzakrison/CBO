@@ -1,0 +1,87 @@
+name: Season QA (free public runner)
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: season-qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  postgres-concurrency:
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-ci-only
+          POSTGRES_DB: cbo_qa
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Real PostgreSQL independent-session concurrency tests
+        env:
+          CBO_QA_DATABASE_URL: postgresql://postgres:local-ci-only@127.0.0.1:5432/cbo_qa
+        run: node tests/season-postgres-qa.mjs
+  supabase-local:
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install pinned local Supabase CLI and browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/cbo-cli" --save-exact supabase@2.121.0
+          npx playwright install --with-deps chromium
+      - name: Controlled GameBook review, publication and mobile regression
+        run: npm run test:browser
+      - name: Start ephemeral loopback-only Supabase (no hosted project)
+        run: |
+          mkdir -p "$RUNNER_TEMP/cbo-free-supabase"
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" init --workdir "$RUNNER_TEMP/cbo-free-supabase" --yes
+          docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 cbo-free-qa
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" start --workdir "$RUNNER_TEMP/cbo-free-supabase" --network-id cbo-free-qa --exclude studio,postgres-meta,logflare,vector,imgproxy,edge-runtime,storage-api,supavisor > "$RUNNER_TEMP/cbo-supabase-start.log" 2>&1
+          umask 077
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" status --workdir "$RUNNER_TEMP/cbo-free-supabase" -o json > "$RUNNER_TEMP/cbo-local-status.json"
+      - name: Real local Supabase Auth, RLS, RPC and mobile UI
+        env:
+          CBO_QA_LOCAL_STATUS_FILE: ${{ runner.temp }}/cbo-local-status.json
+          CBO_QA_CLI: ${{ runner.temp }}/cbo-cli/node_modules/.bin/supabase
+          CBO_QA_CLI_WORKDIR: ${{ runner.temp }}/cbo-free-supabase
+        run: node tests/season-supabase-local-qa.mjs
+      - name: Official Supabase local Security Advisors
+        run: |
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" db advisors --local --type security --level warn --fail-on error --workdir "$RUNNER_TEMP/cbo-free-supabase"
+      - name: Clean local Supabase data and keys
+        if: always()
+        run: |
+          if [ -x "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" ]; then
+            "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" stop --workdir "$RUNNER_TEMP/cbo-free-supabase" --no-backup || true
+          fi
+          rm -f "$RUNNER_TEMP/cbo-local-status.json" "$RUNNER_TEMP/cbo-supabase-start.log"

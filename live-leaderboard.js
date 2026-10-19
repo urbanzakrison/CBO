@@ -1,6 +1,6 @@
 /* CBO 3.6 – clean live leaderboard.
-   2026 data comes only from the server RPC cbo_live_leaderboard_data.
-   No silent fallback to embedded 2026 leaderboard data. */
+   Live-era season data comes only from the server RPC cbo_live_leaderboard_data.
+   No silent fallback to embedded leaderboard data. */
 (() => {
   const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
 
@@ -76,12 +76,12 @@
       badge.title = window.CBO_LIVE_ERROR;
     }
     const rows = document.getElementById('leaderRows');
-    if (rows && String(window.selectedSeason || '2026') === '2026') {
+    if (rows && cboUsesLiveSeason(selectedSeason)) {
       rows.innerHTML = `<div class="unavailable"><strong>Live-data kunde inte hämtas.</strong><br>${String(window.CBO_LIVE_ERROR).replace(/[<>&]/g,'')}</div>`;
     }
   }
 
-  async function load() {
+  async function loadYear(year) {
     const sb = window.CBO_SUPABASE_CLIENT;
     const badge = document.getElementById('leaderSource');
     if (!sb) {
@@ -91,14 +91,15 @@
     if (badge) badge.textContent = 'SUPABASE · HÄMTAR';
 
     try {
-      const { data, error } = await sb.rpc('cbo_live_leaderboard_data', { p_year: 2026 });
+      const { data, error } = await sb.rpc('cbo_season_data', { p_year: Number(year) });
       if (error) throw new Error(error.message || 'RPC-anropet misslyckades.');
       if (!data || data.ok !== true) throw new Error(data?.error || 'Servern returnerade ingen live-data.');
 
       const players = Array.isArray(data.players) ? data.players : [];
       const results = Array.isArray(data.results) ? data.results : [];
       const liveRoundsRaw = Array.isArray(data.rounds) ? data.rounds : [];
-      const stats = buildStats(players, results);
+      const stats = Number(year)>2026 && !results.length ? [] : buildStats(players, results);
+      if (Number(year)>2026) DATA.seasons[String(year)].players=players.map(p=>({name:p.name,startHcp:p.start_hcp}));
 
       const playerById = new Map(players.map(p => [String(p.id), p.name]));
       const resultsByRound = new Map();
@@ -113,7 +114,7 @@
           points: n(r.points)
         });
       }
-      window.CBO_LIVE_ROUNDS = liveRoundsRaw.map(r => ({
+      const rounds = liveRoundsRaw.map(r => ({
         id: r.id,
         round: Number(r.round_number),
         date: r.played_on || '',
@@ -124,8 +125,7 @@
         results: resultsByRound.get(String(r.id)) || []
       })).sort((a,b) => b.round - a.round);
 
-      window.CBO_LIVE_STATS = stats;
-      window.CBO_LIVE_LEADERBOARD = {
+      const leaderboard = {
         total: category(stats,'points',false),
         attendance: category(stats,'attendance',false),
         net: category(stats,'net',true),
@@ -133,23 +133,42 @@
         eff: category(stats,'eff',false),
         top8: category(stats,'top8',true,true)
       };
+      window.CBO_SEASONS.data[String(year)]={rounds,stats,leaderboard};
+      if(String(year)===cboActiveYear()){window.CBO_LIVE_ROUNDS=rounds;window.CBO_LIVE_STATS=stats;window.CBO_LIVE_LEADERBOARD=leaderboard;}
       window.CBO_LIVE_READY = true;
       window.CBO_LIVE_ERROR = '';
 
       if (badge) badge.textContent = `SUPABASE · LIVE · ${results.length} RESULTAT`;
-      if (typeof window.renderLeaderboard === 'function') window.renderLeaderboard();
-      if (typeof window.renderHome === 'function') window.renderHome();
+
 
       console.info('CBO 3.6 live', {
         rounds: data.round_count,
         results: data.result_count,
-        leader: window.CBO_LIVE_LEADERBOARD.total[0]
+        leader: leaderboard.total[0]
       });
     } catch (e) {
       console.error('CBO 3.6 live error', e);
       setError(e?.message || String(e));
+      throw e;
     }
   }
 
-  window.CBO_LOAD_LIVE_LEADERBOARD = load;
+  window.CBO_LOAD_SEASON_YEAR = async year => {
+    if(!window.CBO_SEASONS.data[String(year)]) await loadYear(year);
+  };
+  let loading=null;
+  window.CBO_LOAD_LIVE_LEADERBOARD = () => {
+    if(loading)return loading;
+    loading=(async()=>{
+      try{
+        await window.cboLoadSeasons();
+        const active=cboActiveYear();
+        if(active) await loadYear(active);
+        if(cboUsesLiveSeason(selectedSeason) && selectedSeason!==active) await loadYear(selectedSeason);
+        renderAll();
+      }catch(e){setError(e.message);}
+      finally{loading=null;}
+    })();
+    return loading;
+  };
 })();
