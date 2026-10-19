@@ -76,6 +76,10 @@ jobs:
         env:
           CBO_QA_LOCAL_STATUS_FILE: ${{ runner.temp }}/cbo-local-status.json
         run: node tests/season-supabase-local-qa.mjs
+      - name: Official Supabase local Security Advisors and SQL lint
+        run: |
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" db advisors --local --type security --level warn --fail-on error --workdir "$RUNNER_TEMP/cbo-free-supabase"
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" db lint --local --schema public --level warning --fail-on error --workdir "$RUNNER_TEMP/cbo-free-supabase"
       - name: Clean local Supabase data and keys
         if: always()
         run: |
