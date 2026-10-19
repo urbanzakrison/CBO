@@ -6,6 +6,7 @@ import {createServer} from 'node:http';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
 import {randomBytes} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 const root=resolve(import.meta.dirname,'..');
 const info=JSON.parse(await readFile(process.env.CBO_QA_LOCAL_STATUS_FILE,'utf8'));
@@ -16,6 +17,17 @@ const au=new URL(api),du=new URL(dburl);
 if(!['127.0.0.1','localhost'].includes(au.hostname)||au.port!=='54321'||!['127.0.0.1','localhost'].includes(du.hostname)||du.port!=='54322')throw Error('Refusing non-local Supabase target.');
 for(const secret of [service,anon])if(process.env.GITHUB_ACTIONS)console.log('::add-mask::'+secret);
 const read=f=>readFile(resolve(root,f),'utf8');
+function lint(){
+ const binary=process.env.CBO_QA_CLI,workdir=process.env.CBO_QA_CLI_WORKDIR;
+ if(!binary||!workdir)throw Error('Pinned local CLI and isolated workdir are required for baseline-aware lint.');
+ const r=spawnSync(binary,['db','lint','--local','--schema','public','--level','warning','--fail-on','none','--output','json','--workdir',workdir],{encoding:'utf8',timeout:60000});
+ if(r.status!==0)throw Error('Local lint tool failed: '+r.stderr);
+ const raw=r.stdout.trim();
+ const array=raw.match(/\[[\s\S]*\]/);
+ if(!array && raw && !raw.includes('No schema errors found'))throw Error('Unexpected lint output: '+raw);
+ const rows=array?JSON.parse(array[0]):[];
+ return rows.flatMap(row=>(row.issues||[]).map(issue=>({function:row.function,level:issue.level,message:issue.message,sqlState:issue.sqlState,query:issue.query?.text||''}))).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
 const db=new pg.Client({connectionString:dburl});await db.connect();
 const make=key=>createClient(api,key,{auth:{autoRefreshToken:false,persistSession:false,detectSessionInUrl:false}});
 const administrator=make(service),accounts=[];
@@ -50,7 +62,10 @@ try{
  // Original publisher baseline before installation, actual admin JWT.
  for(let i=0;i<30;i++){const r=await admin.rpc('cbo_publish_round',{p_round_no:1,p_played_on:'2026-05-01',p_course:'QA Hamra',p_par9:36,p_recap:'QA 2026',p_results:initialPayload});if(!r.error){assert.equal(r.data.ok,true);break;}if(i===29)throw r.error;await new Promise(r=>setTimeout(r,250));}
  const before=await rpc(admin,'cbo_live_leaderboard_data',{p_year:2026});
+ const baselineLint=lint();
  await db.query(await read('22_season_management_v1.sql'));await reloadSchema();await waitRpc(admin);
+ const afterLint=lint();assert.deepEqual(afterLint,baselineLint,'Release introduced SQL lint issues beyond the untouched baseline');
+ console.log('PASS baseline-aware SQL lint: '+JSON.stringify({baselineIssues:baselineLint,newIssues:[]}));
  const policies=(await db.query("select relname,relrowsecurity from pg_class where oid in ('public.seasons'::regclass,'public.season_players'::regclass,'public.rounds'::regclass,'public.round_results'::regclass,'public.cbo_season_snapshots'::regclass)")).rows;assert.ok(policies.every(r=>r.relrowsecurity));
  const functions=(await db.query("select proname,proconfig,has_function_privilege('anon',oid,'EXECUTE') anon_execute,has_function_privilege('authenticated',oid,'EXECUTE') member_execute from pg_proc where pronamespace='public'::regnamespace and proname in ('cbo_seasons_status','cbo_season_create','cbo_season_data','cbo_season_activate')")).rows;
  assert.equal(functions.length,4);for(const f of functions){assert.equal(f.anon_execute,false);assert.equal(f.member_execute,true);assert.ok(f.proconfig.some(c=>c==='search_path=""'||c==='search_path='));}
@@ -104,7 +119,7 @@ try{
  await memberContext.route('**/*',route=>{const u=route.request().url();if(u.includes('cdn.jsdelivr.net/npm/@supabase/'))return route.fulfill({contentType:'application/javascript',body:bundle});if(!u.startsWith(origin+'/')&&!u.startsWith(api+'/'))return route.abort();return route.continue();});
  const memberPage=await memberContext.newPage();await memberPage.goto(origin);await memberPage.locator('#loginGolfId').fill(accounts[1].golf);await memberPage.locator('#loginCode').fill(accounts[1].password);await memberPage.evaluate(()=>cboLogin());await memberPage.waitForFunction(()=>window.CBO_LIVE_READY===true);assert.equal(await memberPage.locator('#adminNavButton').isVisible(),false);
  assert.deepEqual(errors,[]);
- const report={environment:'ephemeral local Supabase in free standard public GitHub runner',auth:'real independent admin/member/unknown Auth sessions and actual browser auth-client',checks:['admin/member login','DB authorization unaffected by member user_metadata','anonymous and unknown denied','RLS denies member table writes','snapshot table inaccessible','new RPC EXECUTE/search_path audited','prepare does not change active year','explicit UI activation','empty new leaderboard','round 1 in 2027','duplicate rejected','2026 payload identical','member admin UI hidden'],managedSecurityAdvisors:'Hosted dashboard not used; official CLI local advisors run separately by workflow',paidAPIs:'NOT RUN',productionAccess:false};
+ const report={environment:'ephemeral local Supabase in free standard public GitHub runner',auth:'real independent admin/member/unknown Auth sessions and actual browser auth-client',checks:['admin/member login','DB authorization unaffected by member user_metadata','anonymous and unknown denied','RLS denies member table writes','snapshot table inaccessible','new RPC EXECUTE/search_path audited','prepare does not change active year','explicit UI activation','empty new leaderboard','round 1 in 2027','duplicate rejected','2026 payload identical','member admin UI hidden'],managedSecurityAdvisors:'Hosted dashboard not used; official CLI local advisors run separately by workflow',sqlLint:{baselineIssues:baselineLint,newIssues:[]},paidAPIs:'NOT RUN',productionAccess:false};
  await mkdir(resolve(root,'test-results'),{recursive:true});await writeFile(resolve(root,'test-results/supabase-local-qa.json'),JSON.stringify(report,null,2)+'\n');console.log('PASS '+JSON.stringify(report));
  await context.close();await memberContext.close();
 }finally{
