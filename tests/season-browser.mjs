@@ -91,11 +91,29 @@ try{
  await page.evaluate(()=>showPage('admin'));
  assert.equal(await page.locator('#newRoundNo').inputValue(),'1');
  assert.match(await page.locator('#newSeasonButton').innerText(),/2028/);
- await page.evaluate(()=>{document.getElementById('newDate').value='2027-05-01';document.getElementById('newCourse').value='Test Hamra 2027';document.querySelectorAll('.partcheck').forEach((c,i)=>{c.checked=true;const p=c.closest('.participant');p.querySelector('.shcp').value=10+i;p.querySelector('.net').value=35+i;p.querySelector('.gross').value=45+i;});draftPreview=collectDraft();});
+ // Exercise the actual GameBook review → guest exclusion → duplicate check → publisher.
+ await page.evaluate(names=>{
+  document.getElementById('newDate').value='2027-05-01';document.getElementById('newCourse').value='Test Hamra 2027';
+  cboConfirmRoundDate();
+  renderGameBookReview([
+   {name:names[0],shcp:20,net:35},{name:names[1],shcp:10,net:35},
+   {name:names[2],shcp:12,net:37},{name:names[3],shcp:13,net:38},
+   {name:'Guest QA',shcp:0,net:20}
+  ]);
+  applyGameBookReview();window.TEST_DRAFT_COPY=JSON.parse(JSON.stringify(draftPreview));
+ },names);
  assert.equal(await page.evaluate(()=>draftPreview.results.length),4);
- await page.evaluate(()=>{cboConfirmRoundDate();return saveDraft();});
+ assert.deepEqual(await page.evaluate(()=>draftPreview.results.map(p=>p.points)),[4,3,2,1]);
+ assert.match(await page.locator('#previewCard').innerText(),/GÄST · 0 p/);
+ await page.evaluate(()=>saveDraft());
  await page.waitForFunction(()=>window.CBO_SEASONS.data['2027']?.rounds.length===1);
- assert.equal((await db.query('select r.round_no,s.year from rounds r join seasons s on s.id=r.season_id where s.year=2027')).rows[0].round_no,1);
+ const persisted=(await db.query('select rr.player_id,rr.points,rr.playing_hcp from round_results rr join rounds r on r.id=rr.round_id join seasons s on s.id=r.season_id where s.year=2027 order by rr.points desc')).rows;
+ assert.deepEqual(persisted.map(r=>r.player_id),[ids[1],ids[0],ids[2],ids[3]]);
+ assert.deepEqual(persisted.map(r=>Number(r.points)),[4,3,2,1]);
+ assert.deepEqual(persisted.map(r=>Number(r.playing_hcp)),[10,20,12,13]);
+ await page.evaluate(()=>{draftPreview=window.TEST_DRAFT_COPY;return saveDraft();});
+ assert.equal((await db.query('select count(*)::int n from rounds r join seasons s on s.id=r.season_id where s.year=2027')).rows[0].n,1);
+ assert.equal((await db.query('select r.round_no from rounds r join seasons s on s.id=r.season_id where s.year=2027')).rows[0].round_no,1);
  // Mobile admin card must fit viewport. Keep a review screenshot as an intermediate.
  await page.evaluate(()=>showPage('admin'));
  assert.equal(await page.locator('#seasonManagement').evaluate(e=>e.getBoundingClientRect().right<=window.innerWidth),true);
@@ -109,6 +127,6 @@ try{
  await page.evaluate(()=>showPage('admin'));
  assert.equal(await page.locator('#admin').evaluate(e=>e.classList.contains('active')),false);
  assert.deepEqual(errors,[]);
- console.log('PASS mobile: create 2027, explicit activation, empty views, 2025 history, frozen 2026, round 1 publication, 2028 proposal; no uncaught browser errors.');
+ console.log('PASS mobile: create 2027, explicit activation, empty views, 2025 history, frozen 2026, GameBook review with guest exclusion/SHCP tie-break/4-3-2-1 points/duplicate rejection, round 1 publication, 2028 proposal; no uncaught browser errors.');
  await context.close();
 }finally{await browser.close();await new Promise(r=>server.close(r));await db.close();}

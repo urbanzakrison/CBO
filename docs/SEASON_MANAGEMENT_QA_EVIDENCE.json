@@ -1,0 +1,23 @@
+{
+  "baselineCommit": "c7952ce0e92225ede30831d09e7b1dfc1779bdf1",
+  "environment": "isolated PGlite; sanitized read-only production export; synthetic local auth identity",
+  "source": {
+    "seasons": 16,
+    "rounds": 222,
+    "results": 1525
+  },
+  "checks": {
+    "allSix2026Categories": "identical before installation, after preparation, after activation and after HCP change",
+    "roundRows": "identical",
+    "resultRows": "identical",
+    "champions2011to2025": "identical",
+    "stats2021to2026": "identical"
+  },
+  "hashes": {
+    "standings2026": "c0d4a06b602441873d109efeabdced8ed6d428137467c0cbe422e76cc2a1ebdb",
+    "roundRows": "e496cebbbec6c354bdfb5f12921ebad2c251c308e193fb048ff46dee829be293",
+    "resultRows": "6bf6070d2b05fd0bb7fd08e31ef3855730257b33886ea6ab8c56d56e1cbf167f",
+    "priorSeasons": "359e390df747c7a68670c3343cf2dfb4c9b268e35267462811c99c05cb354658",
+    "stats": "3bbe67a6696cd75432f3112978b1fbb5be6d16de835dce2bf871a2805904ec67"
+  }
+}
