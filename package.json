@@ -25,6 +25,7 @@
   "homepage": "https://github.com/urbanzakrison/CBO#readme",
   "devDependencies": {
     "@electric-sql/pglite": "0.5.10",
+    "@supabase/supabase-js": "2.118.0",
     "pg": "8.16.3",
     "playwright": "1.62.1"
   },

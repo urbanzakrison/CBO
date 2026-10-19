@@ -46,3 +46,40 @@ jobs:
         env:
           CBO_QA_DATABASE_URL: postgresql://postgres:local-ci-only@127.0.0.1:5432/cbo_qa
         run: node tests/season-postgres-qa.mjs
+  supabase-local:
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install pinned local Supabase CLI and browser
+        run: |
+          npm install --prefix "$RUNNER_TEMP/cbo-cli" --save-exact supabase@2.121.0
+          npx playwright install --with-deps chromium
+      - name: Start ephemeral loopback-only Supabase (no hosted project)
+        run: |
+          mkdir -p "$RUNNER_TEMP/cbo-free-supabase"
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" init --workdir "$RUNNER_TEMP/cbo-free-supabase" --yes
+          docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 cbo-free-qa
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" start --workdir "$RUNNER_TEMP/cbo-free-supabase" --network-id cbo-free-qa --exclude studio,postgres-meta,logflare,vector,imgproxy,edge-runtime,storage-api,supavisor > "$RUNNER_TEMP/cbo-supabase-start.log" 2>&1
+          umask 077
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" status --workdir "$RUNNER_TEMP/cbo-free-supabase" -o json > "$RUNNER_TEMP/cbo-local-status.json"
+      - name: Real local Supabase Auth, RLS, RPC and mobile UI
+        env:
+          CBO_QA_LOCAL_STATUS_FILE: ${{ runner.temp }}/cbo-local-status.json
+        run: node tests/season-supabase-local-qa.mjs
+      - name: Clean local Supabase data and keys
+        if: always()
+        run: |
+          if [ -x "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" ]; then
+            "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" stop --workdir "$RUNNER_TEMP/cbo-free-supabase" --no-backup || true
+          fi
+          rm -f "$RUNNER_TEMP/cbo-local-status.json" "$RUNNER_TEMP/cbo-supabase-start.log"
