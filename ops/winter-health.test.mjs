@@ -91,10 +91,13 @@ test('independent watchdog detects disabled, missing, stale and failed schedules
 test('PR change scope excludes every app, auth, database and On Tour file',()=>{
  const base=process.env.CBO_WINTER_BASE_SHA || execFileSync('git',['merge-base','origin/main','HEAD'],{encoding:'utf8'}).trim();
  const changed=execFileSync('git',['diff','--name-only',base,'HEAD'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
- for(const f of changed)assert.ok(f.startsWith('ops/')||f==='docs/WINTER_OPERATIONS_V1.md'||f==='.github/workflows/cbo-winter-health.yml',f);
+ for(const f of changed)assert.ok(f.startsWith('ops/')||/^docs\/WINTER_OPERATIONS_V[12](?:_QA)?\.md$/.test(f)||['.github/workflows/cbo-winter-health.yml','.github/workflows/cbo-winter-v2-qa.yml'].includes(f),f);
 });
-test('workflow has daily UTC schedule, manual trigger, no write/deploy/secrets',async()=>{
+test('workflow preserves UTC schedule, read-only token and one gated heartbeat secret',async()=>{
  const w=await readFile(new URL('../.github/workflows/cbo-winter-health.yml',import.meta.url),'utf8');
  assert.match(w,/cron: '23 6 \* \* \*'/);assert.match(w,/workflow_dispatch:/);assert.match(w,/contents: read/);
- assert.ok(!/secrets\.|write|deploy|supabase.*(key|token)/i.test(w));assert.match(w,/timeout-minutes: 4/);assert.match(w,/visibility == 'public'/);
+ assert.ok(!/write|deploy|supabase.*(key|token)/i.test(w));assert.match(w,/timeout-minutes: 4/);assert.match(w,/visibility == 'public'/);
+ assert.deepEqual(w.match(/secrets\.[A-Z_]+/g),['secrets.CBO_HEALTHCHECKS_PING_URL']);
+ assert.match(w,/if: success\(\) && github.event_name == 'schedule'/);
+ assert.ok(!w.slice(w.indexOf('  isolated-qa:')).includes('secrets.'));
 });

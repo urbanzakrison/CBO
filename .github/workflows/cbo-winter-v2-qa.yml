@@ -1,0 +1,56 @@
+name: Winter v2 isolated recovery QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ops/**'
+      - 'docs/WINTER_OPERATIONS_V2*.md'
+      - '.github/workflows/cbo-winter-v2-qa.yml'
+      - '.github/workflows/cbo-winter-health.yml'
+permissions:
+  contents: read
+concurrency:
+  group: winter-v2-qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  synthetic-recovery:
+    if: github.event.repository.visibility == 'public' && github.event.pull_request.head.repo.full_name == 'urbanzakrison/CBO'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Offline health, heartbeat, encryption and corruption tests
+        env:
+          CBO_WINTER_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node --test ops/winter-health.test.mjs ops/winter-heartbeat.test.mjs ops/dr-bundle.test.mjs
+      - name: Install pinned local CLI
+        run: npm install --prefix "$RUNNER_TEMP/cbo-cli" --save-exact supabase@2.121.0
+      - name: Start disposable Supabase with Auth and private Storage
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/cbo-winter-v2-qa"
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" init --help > /dev/null
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" start --help > /dev/null
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" init --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" --yes
+          docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 cbo-winter-v2-qa
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" start --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" --network-id cbo-winter-v2-qa --exclude studio,postgres-meta,logflare,vector,imgproxy,edge-runtime,supavisor > "$RUNNER_TEMP/cbo-dr-start.log" 2>&1
+          "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" status --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" -o json > "$RUNNER_TEMP/cbo-dr-status.json"
+      - name: Real dump, encrypted copies, destructive isolated loss and restore
+        env:
+          CBO_DR_LOCAL_STATUS_FILE: ${{ runner.temp }}/cbo-dr-status.json
+        run: node ops/dr-local-qa.mjs
+      - name: Remove disposable stack, synthetic backups and local keys
+        if: always()
+        run: |
+          if [ -x "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" ]; then
+            "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" stop --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" --no-backup || true
+          fi
+          rm -f "$RUNNER_TEMP/cbo-dr-status.json" "$RUNNER_TEMP/cbo-dr-start.log"
