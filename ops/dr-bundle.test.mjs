@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,chmod,writeFile,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,chmod,writeFile,readFile,stat,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
@@ -16,9 +16,17 @@ test('GnuPG authenticated encrypted round trip, two private copies, wrong key an
   const key=randomBytes(32).toString('base64url'),plain=Buffer.from('SYNTHETIC_AUTH_AND_PRIVATE_IMAGE');
   const encrypted=await crypt(plain,key,dir);assert.ok(!encrypted.includes(plain));
   const a=join(dir,'private-a.gpg'),b=join(dir,'private-b.gpg');await writeFile(a,encrypted,{mode:0o600,flag:'wx'});await writeFile(b,encrypted,{mode:0o600,flag:'wx'});
+  assert.equal((await stat(a)).mode&0o777,0o600);assert.equal((await stat(b)).mode&0o777,0o600);
   assert.equal(sha256(await readFile(a)),sha256(await readFile(b)));assert.deepEqual(await crypt(await readFile(b),key,dir,true),plain);
   await assert.rejects(()=>crypt(encrypted,randomBytes(32).toString('hex'),dir,true));
   const corrupt=Buffer.from(encrypted);corrupt[corrupt.length-10]^=1;await assert.rejects(()=>crypt(corrupt,key,dir,true));
   await assert.rejects(()=>crypt(plain,'short',dir));
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('recovery workflow is isolated PR-only, has no hosted secrets or public backup artifacts',async()=>{
+ const w=await readFile(new URL('../.github/workflows/cbo-winter-v2-qa.yml',import.meta.url),'utf8');
+ assert.match(w,/pull_request:/);assert.match(w,/contents: read/);assert.match(w,/visibility == 'public'/);assert.match(w,/ubuntu-24.04/);assert.match(w,/umask 077/);
+ assert.ok(!/secrets\.|schedule:|workflow_dispatch:|upload-artifact|deploy|contents: write/.test(w));
+ const script=await readFile(new URL('./dr-local-qa.mjs',import.meta.url),'utf8');
+ assert.ok(!script.includes('lwymnhmwrinzuvmoqqif'));assert.match(script,/REFUSING_NON_ISOLATED_TARGET/);assert.match(script,/supabase_db_cbo-winter-v2-qa/);
 });

@@ -131,6 +131,9 @@ Free-planens lagring/egress måste räcka; avbryt vid quota, uppgradera inte aut
    Auth-export måste explicit täcka alla använda Auth-tabeller och lösenordshashar;
    users/identities räcker bara för det syntetiska e-posttestet i denna PR. Inventera
    MFA/SSO, triggers och plattformsversion innan en produktionsrestore godkänns.
+   Flera separata dumpfiler måste dela en exporterad snapshot under en kvarvarande
+   lästransaktion, eller tas under godkänt skrivuppehåll. Separata CLI-kommandon ger
+   inte automatiskt samma ögonblicksbild. Roller/DDL måste också vara stabila under exporten.
 3. Samla public-tabeller utan undantag, inklusive snapshots, medlemscredentials,
    Klubbhus, Tour och push. Samla typer/sequences/constraints/index/policies/ACL,
    RPC-signaturer/definitioner/search_path/ägare, custom managed-schema-policyer,
@@ -237,6 +240,9 @@ och dimensionerad för fulla bildvolymer. Två mappar i CI är inte två offsite
 Auth users/identities och nya lösenordsinloggningar provas; MFA/SSO, Vault, riktiga
 Golf-ID/CBO-koder, provider-/SMTP-/Edge-secrets och fulla produktionsbilder provas inte.
 Publika funktioner/policyer/index och hela syntetiska 2026-payloaden jämförs före/efter.
+Objektens verkliga ACL-grants jämförs också. Auth-data återförs users före identities
+med aktiva FK-kontroller. Plattformens default-ACL återimporteras inte blint; appens
+faktiska objekträttigheter återförs separat utan att begära superuser.
 Storage-policy återförs uttryckligen och privata binärer laddas upp via API; medlem,
 okänd och anonym provas. Plattformens managed schemas/nycklar ersätts inte.
 Detta stärker metodbeviset men stänger inte produktionsbackupens inventerade luckor.

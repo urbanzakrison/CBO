@@ -35,13 +35,13 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/cbo-cli" --save-exact supabase@2.121.0
       - name: Start disposable Supabase with Auth and private Storage
         run: |
+          umask 077
           mkdir -p "$RUNNER_TEMP/cbo-winter-v2-qa"
           "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" init --help > /dev/null
           "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" start --help > /dev/null
           "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" init --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" --yes
           docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 cbo-winter-v2-qa
           "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" start --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" --network-id cbo-winter-v2-qa --exclude studio,postgres-meta,logflare,vector,imgproxy,edge-runtime,supavisor > "$RUNNER_TEMP/cbo-dr-start.log" 2>&1
-          umask 077
           "$RUNNER_TEMP/cbo-cli/node_modules/.bin/supabase" status --workdir "$RUNNER_TEMP/cbo-winter-v2-qa" -o json > "$RUNNER_TEMP/cbo-dr-status.json"
       - name: Real dump, encrypted copies, destructive isolated loss and restore
         env:
