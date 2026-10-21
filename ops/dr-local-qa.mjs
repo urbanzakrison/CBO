@@ -17,7 +17,12 @@ if(process.env.GITHUB_ACTIONS!=='true'||process.env.GITHUB_EVENT_NAME!=='pull_re
 for(const secret of [anon,service]){assert.ok(secret);console.log('::add-mask::'+secret);}
 function docker(args,input){
  const result=spawnSync('docker',['exec','-i',container,...args],{input,encoding:null,maxBuffer:64*1024*1024,timeout:60000});
- if(result.status!==0)throw Error('ISOLATED_DATABASE_COMMAND_FAILED');return result.stdout;
+ if(result.status!==0){
+  const error=result.stderr?.toString()||'';
+  // Whitelisted categories only; SQL/COPY detail and user values never reach logs.
+  const code=/permission denied|must be superuser/i.test(error)?'PG_PERMISSION':/foreign key/i.test(error)?'PG_FOREIGN_KEY':/already exists/i.test(error)?'PG_OBJECT_EXISTS':'PG_COMMAND';
+  throw Error(code);
+ }return result.stdout;
 }
 const inspect=spawnSync('docker',['inspect','--format','{{.Name}}',container],{encoding:'utf8'});
 assert.equal(inspect.stdout.trim(),'/'+container);
@@ -41,6 +46,10 @@ try{
  await db.query('alter table players add column auth_user_id uuid references auth.users(id); alter table player_credentials add column golf_id text; alter table player_credentials add column code_hash text');
  await db.query(await fixture('tests/fixtures/production-functions.sql'));
  await db.query("create function public.is_cbo_admin() returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.players where auth_user_id=auth.uid() and active and is_admin)$$");
+ for(const table of ['players','seasons','season_players','rounds','round_results']){
+  await db.query(`alter table public.${table} enable row level security; revoke all on public.${table} from public,anon; grant select on public.${table} to authenticated; create policy dr_members_read on public.${table} for select to authenticated using(public.is_cbo_member())`);
+ }
+ await db.query('alter table public.player_credentials enable row level security; revoke all on public.player_credentials from public,anon,authenticated');
  for(let i=0;i<5;i++){
   const email=`winter-dr-${i}@cbo.local`,password=randomBytes(32).toString('base64url');
   const created=await checked(await adminApi.auth.admin.createUser({email,password,email_confirm:true}));
@@ -71,9 +80,10 @@ try{
  }
  stage='dump';const before=await state();
  const publicDump=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--schema=public','--no-owner']);
- const authDump=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--data-only','--table=auth.users','--table=auth.identities','--no-owner','--no-privileges']);
+ const authUsers=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--data-only','--table=auth.users','--no-owner','--no-privileges']);
+ const authIdentities=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--data-only','--table=auth.identities','--no-owner','--no-privileges']);
  const downloaded=Buffer.from(await (await checked(await member.storage.from(bucket).download(imagePath))).arrayBuffer());assert.equal(sha256(downloaded),sha256(image));
- const files={'public.dump':publicDump,'auth.dump':authDump,'private-image.png':downloaded,'storage-policy.sql':Buffer.from(policySql),'bucket.json':Buffer.from(JSON.stringify({id:bucket,public:false,path:imagePath,contentType:'image/png'}))};
+ const files={'public.dump':publicDump,'auth-users.dump':authUsers,'auth-identities.dump':authIdentities,'private-image.png':downloaded,'storage-policy.sql':Buffer.from(policySql),'bucket.json':Buffer.from(JSON.stringify({id:bucket,public:false,path:imagePath,contentType:'image/png'}))};
  const fileManifest=manifest(files);
  // Synthetic bundle only: bounded in-memory JSON, not the production streaming design.
  const plain=Buffer.from(JSON.stringify({manifest:fileManifest,files:Object.fromEntries(Object.entries(files).map(([n,b])=>[n,b.toString('base64')]))}));
@@ -89,7 +99,8 @@ try{
  stage='erase';await checked(await adminApi.storage.from(bucket).remove([imagePath]));await checked(await adminApi.storage.deleteBucket(bucket));
  await db.query('drop schema public cascade; truncate auth.users cascade');
  assert.equal((await db.query('select count(*)::int n from auth.users')).rows[0].n,0);
- stage='restore-auth';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--data-only','--disable-triggers'],restored['auth.dump']);
+ stage='restore-auth-users';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--data-only'],restored['auth-users.dump']);
+ stage='restore-auth-identities';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--data-only'],restored['auth-identities.dump']);
  stage='restore-public';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--no-owner'],restored['public.dump']);
  await db.query(restored['storage-policy.sql'].toString());await waitSchema(administrator);
  // Old sessions are intentionally invalidated. Password login must work from restored hashes.
@@ -106,9 +117,13 @@ try{
  assert.equal((await checked(await recoveredMember.from('cbo_clubhouse_messages').select('id'))).length,1);
  assert.equal((await checked(await recoveredUnknown.from('cbo_clubhouse_messages').select('id'))).length,0);
  assert.ok((await recoveredMember.rpc('cbo_season_create',{p_year:2028})).error);
+ assert.ok((await recoveredMember.from('player_credentials').select('*')).error);
+ assert.ok((await anonymous.from('player_credentials').select('*')).error);
+ assert.equal((await checked(await recoveredUnknown.from('players').select('id'))).length,0);
  console.log(JSON.stringify({status:'PASS',environment:'ephemeral loopback Supabase; synthetic only',checks:['real pg_dump/pg_restore schema and data','Auth users and identities restored; five new password logins','membership and credential-hash relations identical','2026 snapshot, champion, rounds, results and six-category payload identical','2027 active unchanged','public functions, RLS policies and indexes identical','clubhouse messages/reactions/image references identical','private PNG bytes restored via Storage API','member can read; anonymous and unknown cannot','member cannot create season','GnuPG encryption; manifest; two ciphertext copies equal'],limitations:['not a production backup','same platform stack, application schema recreated; not a second hosted project','synthetic users+identities only, no MFA/SSO/Vault/production secrets','two local test copies, not independent offsite copies','no real provider alert or email receipt'],productionAccess:false}));
-}catch{
- console.error('FAIL ISOLATED_DR_QA stage='+stage+' (details suppressed to protect credentials and dump contents)');process.exitCode=1;
+}catch(error){
+ const category=['PG_PERMISSION','PG_FOREIGN_KEY','PG_OBJECT_EXISTS','PG_COMMAND'].includes(error.message)?error.message:'CHECK_FAILED';
+ console.error('FAIL ISOLATED_DR_QA stage='+stage+' category='+category+' (details suppressed to protect credentials and dump contents)');process.exitCode=1;
 }finally{
  await db.end();await rm(dir,{recursive:true,force:true});
 }

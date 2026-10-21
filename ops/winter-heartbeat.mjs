@@ -8,7 +8,7 @@ export function validPingUrl(value) {
  return typeof value==='string' && /^https:\/\/hc-ping\.com\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
 }
 export function verifiedPass(report,now=Date.now()) {
- return report?.mode==='LIVE' && report.status==='PASS' && Number.isFinite(Date.parse(report.utc)) &&
+ return report?.mode==='READ_ONLY_LIVE' && report.status==='PASS' && Number.isFinite(Date.parse(report.utc)) &&
   now-Date.parse(report.utc)>=0 && now-Date.parse(report.utc)<5*60*1000 &&
   report.checks?.length===2 && ['frontend','supabase_database'].every(service=>
    report.checks.some(c=>c.service===service && c.status==='PASS' && c.httpStatus===200 && !c.error));

@@ -35,7 +35,7 @@ Integrationen är avstängd när opt-in-variabeln inte är exakt `true` och redo
 `NOT_ENABLED`, inte ett verifierat frånvaroskydd. Vid aktiverad integration ger saknad
 eller felaktig secret FAIL. Bara den skyddade main-jobben vid `schedule`, efter
 framgångsrik health-step, har tillgång till ping-secret. PR-QA har inga produktionssecrets.
-Skriptet kräver dessutom LIVE/PASS, rätt två kontroller med HTTP 200 och färsk UTC
+Skriptet kräver dessutom READ_ONLY_LIVE/PASS, rätt två kontroller med HTTP 200 och färsk UTC
 (max fem minuter). FAIL, gammal rapport, simulering eller manuell körning ger ingen signal.
 
 Endast tom POST skickas. Exakt HTTPS-värd och UUID-format krävs; användarinformation,

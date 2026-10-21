@@ -54,4 +54,10 @@ jobs:
           CBO_WINTER_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node --test ops/winter-health.test.mjs ops/winter-heartbeat.test.mjs
       - name: One legitimate read-only live QA check
+        env:
+          CBO_HEALTH_REPORT: ${{ runner.temp }}/cbo-health-qa.json
         run: node ops/winter-health.mjs
+      - name: Verify real v1 report compatibility without sending any ping
+        env:
+          CBO_HEALTH_REPORT: ${{ runner.temp }}/cbo-health-qa.json
+        run: node --input-type=module -e 'import {readFile} from "node:fs/promises"; import {verifiedPass} from "./ops/winter-heartbeat.mjs"; if (!verifiedPass(JSON.parse(await readFile(process.env.CBO_HEALTH_REPORT,"utf8")))) process.exit(1); console.log("PASS heartbeat report contract; no provider request");'
