@@ -27,7 +27,16 @@ jobs:
         with:
           node-version: '24'
       - name: Read-only frontend and database health
+        env:
+          CBO_HEALTH_REPORT: ${{ runner.temp }}/cbo-health.json
         run: node ops/winter-health.mjs
+      - name: Opt-in independent success heartbeat (schedule only)
+        if: success() && github.event_name == 'schedule'
+        env:
+          CBO_HEALTH_REPORT: ${{ runner.temp }}/cbo-health.json
+          CBO_HEALTHCHECKS_ENABLED: ${{ vars.CBO_HEALTHCHECKS_ENABLED }}
+          CBO_HEALTHCHECKS_PING_URL: ${{ secrets.CBO_HEALTHCHECKS_PING_URL }}
+        run: node ops/winter-heartbeat.mjs
   isolated-qa:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'urbanzakrison/CBO' && github.event.repository.visibility == 'public'
     runs-on: ubuntu-24.04
@@ -43,6 +52,6 @@ jobs:
       - name: Offline fault, timeout, retry and log-safety tests
         env:
           CBO_WINTER_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: node --test ops/winter-health.test.mjs
+        run: node --test ops/winter-health.test.mjs ops/winter-heartbeat.test.mjs
       - name: One legitimate read-only live QA check
         run: node ops/winter-health.mjs
