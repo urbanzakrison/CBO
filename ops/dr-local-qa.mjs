@@ -39,6 +39,16 @@ async function waitSchema(client){
 }
 const bucket='cbo-clubhouse';
 const policySql="create policy dr_member_images on storage.objects for all to authenticated using(bucket_id='cbo-clubhouse' and public.is_cbo_member()) with check(bucket_id='cbo-clubhouse' and public.is_cbo_member());";
+// Object grants are portable; platform-owned ALTER DEFAULT PRIVILEGES are not.
+// Capture the actual app object grants, not a guessed permissive replacement.
+const aclQuery=`with objects as (
+ select 'table' kind,format('%I.%I',n.nspname,c.relname) name,c.relacl acl,c.relowner owner,'r'::"char" acltype
+ from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','v')
+ union all select 'function',p.oid::regprocedure::text,p.proacl,p.proowner,'f'::"char" from pg_proc p where p.pronamespace='public'::regnamespace
+), grants as (
+ select kind,name,case when a.grantee=0 then 'PUBLIC' else quote_ident(pg_get_userbyid(a.grantee)) end grantee,a.privilege_type,a.is_grantable
+ from objects cross join lateral aclexplode(coalesce(acl,acldefault(acltype,owner))) a
+) select * from grants order by kind,name,grantee,privilege_type`;
 let imagePath;
 let stage='seed';
 try{
@@ -76,14 +86,17 @@ try{
   const names=['players','player_credentials','seasons','season_players','rounds','round_results','cbo_season_snapshots','cbo_clubhouse_messages','cbo_clubhouse_reactions'];
   const state={};for(const name of names)state[name]=(await db.query(`select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),'[]'::jsonb) rows from public.${name} t`)).rows[0].rows;
   state.catalog=(await db.query("select 'policy' kind,schemaname||'.'||tablename||'.'||policyname name,qual||coalesce(with_check,'') definition from pg_policies where schemaname='public' union all select 'function',proname,pg_get_functiondef(oid) from pg_proc where pronamespace='public'::regnamespace union all select 'index',indexname,indexdef from pg_indexes where schemaname='public' order by 1,2,3")).rows;
+  state.grants=(await db.query(aclQuery)).rows;
   return state;
  }
  stage='dump';const before=await state();
  const publicDump=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--schema=public','--no-owner']);
  const authUsers=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--data-only','--table=auth.users','--no-owner','--no-privileges']);
  const authIdentities=docker(['pg_dump','-U','postgres','-d','postgres','-Fc','--data-only','--table=auth.identities','--no-owner','--no-privileges']);
+ const aclSql='grant usage on schema public to anon,authenticated,service_role; revoke all privileges on all tables in schema public from public,anon,authenticated,service_role; revoke all privileges on all functions in schema public from public,anon,authenticated,service_role;\n'+
+  before.grants.map(g=>`grant ${g.privilege_type} on ${g.kind} ${g.name} to ${g.grantee}${g.is_grantable?' with grant option':''};`).join('\n');
  const downloaded=Buffer.from(await (await checked(await member.storage.from(bucket).download(imagePath))).arrayBuffer());assert.equal(sha256(downloaded),sha256(image));
- const files={'public.dump':publicDump,'auth-users.dump':authUsers,'auth-identities.dump':authIdentities,'private-image.png':downloaded,'storage-policy.sql':Buffer.from(policySql),'bucket.json':Buffer.from(JSON.stringify({id:bucket,public:false,path:imagePath,contentType:'image/png'}))};
+ const files={'public.dump':publicDump,'object-grants.sql':Buffer.from(aclSql),'auth-users.dump':authUsers,'auth-identities.dump':authIdentities,'private-image.png':downloaded,'storage-policy.sql':Buffer.from(policySql),'bucket.json':Buffer.from(JSON.stringify({id:bucket,public:false,path:imagePath,contentType:'image/png'}))};
  const fileManifest=manifest(files);
  // Synthetic bundle only: bounded in-memory JSON, not the production streaming design.
  const plain=Buffer.from(JSON.stringify({manifest:fileManifest,files:Object.fromEntries(Object.entries(files).map(([n,b])=>[n,b.toString('base64')]))}));
@@ -101,7 +114,8 @@ try{
  assert.equal((await db.query('select count(*)::int n from auth.users')).rows[0].n,0);
  stage='restore-auth-users';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--data-only'],restored['auth-users.dump']);
  stage='restore-auth-identities';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--data-only'],restored['auth-identities.dump']);
- stage='restore-public';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--no-owner'],restored['public.dump']);
+ stage='restore-public';docker(['pg_restore','-U','postgres','-d','postgres','--exit-on-error','--single-transaction','--no-owner','--no-privileges'],restored['public.dump']);
+ stage='restore-object-grants';await db.query(restored['object-grants.sql'].toString());
  await db.query(restored['storage-policy.sql'].toString());await waitSchema(administrator);
  // Old sessions are intentionally invalidated. Password login must work from restored hashes.
  stage='restore-login';for(const account of accounts){account.client=make(anon);await checked(await account.client.auth.signInWithPassword({email:account.email,password:account.password}));}
