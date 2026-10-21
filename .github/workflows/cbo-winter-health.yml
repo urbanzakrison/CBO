@@ -41,8 +41,8 @@ jobs:
         with:
           node-version: '24'
       - name: Offline fault, timeout, retry and log-safety tests
+        env:
+          CBO_WINTER_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node --test ops/winter-health.test.mjs
       - name: One legitimate read-only live QA check
         run: node ops/winter-health.mjs
-      - name: Deliberate offline failure to verify GitHub red status (QA only)
-        run: node ops/winter-health.mjs --simulate frontend

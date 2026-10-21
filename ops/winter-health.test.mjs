@@ -73,9 +73,11 @@ test('config only accepts the existing project and publishable key format',()=>{
  assert.throws(()=>publicKey('window.CBO_SUPABASE_URL="https://other.invalid";'));
 });
 test('offline CLI fault produces nonzero status and sanitized log; production simulation blocked',()=>{
- const r=spawnSync(process.execPath,['ops/winter-health.mjs','--simulate','frontend'],{encoding:'utf8',env:{...process.env,GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'pull_request',GITHUB_STEP_SUMMARY:'',CBO_HEALTH_REPORT:''}});
- assert.equal(r.status,1);const report=JSON.parse(r.stdout);assert.equal(report.status,'FAIL');assert.equal(report.mode,'ISOLATED_FAULT_QA');
- assert.ok(!/private|publishable|apikey|Bearer|token|Authorization/i.test(r.stdout));
+ for(const fault of ['frontend','supabase','timeout']){
+  const r=spawnSync(process.execPath,['ops/winter-health.mjs','--simulate',fault],{encoding:'utf8',env:{...process.env,GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'pull_request',GITHUB_STEP_SUMMARY:'',CBO_HEALTH_REPORT:''}});
+  assert.equal(r.status,1);const report=JSON.parse(r.stdout);assert.equal(report.status,'FAIL');assert.equal(report.mode,'ISOLATED_FAULT_QA');
+  assert.ok(!/private|publishable|apikey|Bearer|token|Authorization/i.test(r.stdout));
+ }
  const blocked=spawnSync(process.execPath,['ops/winter-health.mjs','--simulate','frontend'],{encoding:'utf8',env:{...process.env,GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'schedule',GITHUB_STEP_SUMMARY:'',CBO_HEALTH_REPORT:''}});
  assert.equal(blocked.status,1);assert.equal(JSON.parse(blocked.stdout).error,'CONFIG_OR_ARGUMENT_ERROR');
 });
@@ -87,7 +89,8 @@ test('independent watchdog detects disabled, missing, stale and failed schedules
  for(const runs of [[],[{...good,event:'workflow_dispatch'}],[{...good,created_at:'2026-10-18T06:23:00Z'}],[{...good,conclusion:'failure'}],[{...good,status:'in_progress'}],[{...good,created_at:'invalid'}]])assert.equal(assess({state:'active'},{workflow_runs:runs},now).status,'FAIL');
 });
 test('PR change scope excludes every app, auth, database and On Tour file',()=>{
- const changed=execFileSync('git',['diff','--name-only','4c9cb505292dbe4a1cd3873934dd3ce168a1baed','HEAD'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
+ const base=process.env.CBO_WINTER_BASE_SHA || execFileSync('git',['merge-base','origin/main','HEAD'],{encoding:'utf8'}).trim();
+ const changed=execFileSync('git',['diff','--name-only',base,'HEAD'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
  for(const f of changed)assert.ok(f.startsWith('ops/')||f==='docs/WINTER_OPERATIONS_V1.md'||f==='.github/workflows/cbo-winter-health.yml',f);
 });
 test('workflow has daily UTC schedule, manual trigger, no write/deploy/secrets',async()=>{
